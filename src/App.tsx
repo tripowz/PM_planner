@@ -529,7 +529,14 @@ const useAppStore = create<AppState>()((set, get) => ({
     if (error) throw error
   },
   signUp: async (email, password) => {
-    const { error } = await getClient().auth.signUp({ email, password, options: { data: { display_name: email.split('@')[0] } } })
+    const { error } = await getClient().auth.signUp({
+      email,
+      password,
+      options: {
+        data: { display_name: email.split('@')[0] },
+        emailRedirectTo: window.location.origin,
+      },
+    })
     if (error) throw error
   },
   signOut: async () => {
@@ -913,7 +920,8 @@ function LoginPage() {
       }
     } catch (error) {
       console.error(error)
-      toast.error(mode === 'login' ? 'Не удалось войти' : 'Не удалось создать аккаунт')
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      toast.error(`${mode === 'login' ? 'Не удалось войти' : 'Не удалось создать аккаунт'}: ${message}`)
     } finally {
       setLoading(false)
     }
