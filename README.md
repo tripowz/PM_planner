@@ -11,10 +11,11 @@ npm run dev
 
 Локальный URL: `http://localhost:5173/`.
 
-Приложение работает без Supabase в локальном демо-режиме: данные сохраняются в `localStorage`. Для подключения Supabase скопируйте `.env.example` в `.env.local`, заполните ключи и примените миграцию из `supabase/migrations/20260424000000_initial_schema.sql`.
+Приложение работает только через Supabase Auth + Postgres. Скопируйте `.env.example` в `.env.local`, заполните ключи и примените миграцию из `supabase/migrations/20260424000000_initial_schema.sql`.
 
 ## Что реализовано
 
+- Supabase Auth, RLS и пустое начальное состояние без demo seed-данных.
 - Today с MIT, нуджами, быстрым выбором задачи и Pomodoro.
 - Kanban Board с drag-and-drop и жёстким WIP-лимитом 3 для «В работе».
 - Inbox / Backlog с bulk actions.

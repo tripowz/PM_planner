@@ -42,7 +42,7 @@ import remarkGfm from 'remark-gfm'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { toast } from 'sonner'
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import type { User } from '@supabase/supabase-js'
 import { format, isToday, parseISO, startOfWeek } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import {
@@ -59,7 +59,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { hasSupabaseConfig } from './lib/supabase'
+import { hasSupabaseConfig, supabase } from './lib/supabase'
 
 type Page =
   | 'today'
@@ -170,6 +170,10 @@ type PomodoroState = {
 }
 
 type AppState = {
+  currentUser: User | null
+  authReady: boolean
+  dataLoading: boolean
+  dataError?: string
   tasks: Task[]
   flags: Flag[]
   decisions: Decision[]
@@ -181,24 +185,29 @@ type AppState = {
   theme: 'dark' | 'light'
   accentColor: string
   onboardingDone: boolean
-  createTask: (input: TaskInput) => void
-  updateTask: (id: string, patch: Partial<Task>) => void
-  deleteTask: (id: string) => void
+  initialize: () => Promise<void>
+  loadData: () => Promise<void>
+  signIn: (email: string, password: string) => Promise<void>
+  signUp: (email: string, password: string) => Promise<void>
+  signOut: () => Promise<void>
+  createTask: (input: TaskInput) => Promise<void>
+  updateTask: (id: string, patch: Partial<Task>) => Promise<void>
+  deleteTask: (id: string) => Promise<void>
   moveTask: (id: string, status: Status) => boolean
-  bulkMove: (ids: string[], status: Status) => void
-  setMit: (taskId?: string) => void
+  bulkMove: (ids: string[], status: Status) => Promise<void>
+  setMit: (taskId?: string) => Promise<void>
   toggleTheme: () => void
   setOnboardingDone: () => void
   startPomodoro: (taskId?: string) => void
   pausePomodoro: () => void
   stopPomodoro: (interrupted?: boolean) => void
   tickPomodoro: () => void
-  upsertFlag: (flag: Flag) => void
-  upsertDecision: (decision: Decision) => void
-  upsertNote: (note: Note) => void
-  upsertRetro: (retro: Retro) => void
-  useTemplate: (id: string) => void
-  importData: (data: Partial<Pick<AppState, 'tasks' | 'flags' | 'decisions' | 'notes' | 'retros' | 'templates'>>) => void
+  upsertFlag: (flag: Flag) => Promise<void>
+  upsertDecision: (decision: Decision) => Promise<void>
+  upsertNote: (note: Note) => Promise<void>
+  upsertRetro: (retro: Retro) => Promise<void>
+  useTemplate: (id: string) => Promise<void>
+  importData: (data: Partial<Pick<AppState, 'tasks' | 'flags' | 'decisions' | 'notes' | 'retros' | 'templates'>>) => Promise<void>
 }
 
 type TaskInput = Omit<Task, 'id' | 'actualMinutes' | 'pomodoroSessions' | 'position' | 'createdAt' | 'updatedAt' | 'completedAt'>
@@ -242,135 +251,6 @@ const SEVERITY_COLORS: Record<Severity, string> = {
   low: '#4a90e2',
 }
 
-const defaultTasks: Task[] = [
-  {
-    id: uid(),
-    title: 'Убрать MOCK_BOOKING fallback перед релизом',
-    description: 'Проверить ConfirmationPage и выключить fallback для production-сборки.',
-    project: 'site-generator',
-    type: 'bug',
-    impact: 'high',
-    effort: 'M',
-    priority: 'P0',
-    status: 'progress',
-    entryPoint: 'template-modern / ConfirmationPage',
-    acceptanceCriteria: ['Fallback не используется в production', 'Добавлен регрессионный сценарий', 'Ошибка брони видна пользователю корректно'],
-    tags: ['release', 'booking'],
-    dueDate: todayKey(),
-    estimatedMinutes: 120,
-    actualMinutes: 25,
-    pomodoroSessions: 1,
-    position: 1,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: uid(),
-    title: 'Описать upgrade path для React Native 0.63',
-    description: 'Подготовить короткий план обновления с рисками и проверками.',
-    project: 'Mobile',
-    type: 'research',
-    impact: 'medium',
-    effort: 'L',
-    priority: 'P1',
-    status: 'week',
-    entryPoint: 'mobile workspace',
-    acceptanceCriteria: ['Есть целевая версия', 'Описаны breaking changes', 'Есть smoke-checklist'],
-    tags: ['mobile', 'tech-debt'],
-    estimatedMinutes: 180,
-    actualMinutes: 0,
-    pomodoroSessions: 0,
-    position: 2,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: uid(),
-    title: 'Сверить терминологию “темы” и “шаблоны”',
-    description: 'Выровнять словарь продукта с маркетингом и UI.',
-    project: 'Cross-product',
-    type: 'docs',
-    impact: 'medium',
-    effort: 'S',
-    priority: 'P2',
-    status: 'backlog',
-    entryPoint: 'site-generator docs',
-    acceptanceCriteria: ['Принято единое название', 'Обновлены тексты в интерфейсе', 'Добавлена заметка в decision log'],
-    tags: ['copy', 'product'],
-    estimatedMinutes: 60,
-    actualMinutes: 0,
-    pomodoroSessions: 0,
-    position: 3,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-]
-
-const defaultFlags: Flag[] = [
-  { id: uid(), title: 'Backend booking engine отсутствует в workspace', description: 'Исходников нет, серверная логика не валидируется', severity: 'high', category: 'technical', status: 'open', owner: 'PM', identifiedAt: todayKey() },
-  { id: uid(), title: 'MOCK_BOOKING fallback в ConfirmationPage', description: 'Удалить перед прод-релизом', severity: 'high', category: 'technical', status: 'in_progress', owner: 'Frontend', identifiedAt: todayKey() },
-  { id: uid(), title: 'reservation.custom-tax-fees.add не реализован', description: 'Индивидуальные налоги на бронь задуманы, но не доведены', severity: 'medium', category: 'product', status: 'open', owner: 'Product', identifiedAt: todayKey() },
-  { id: uid(), title: 'Angular 9.1 EOL', description: 'Стратегический технический долг и security риск', severity: 'high', category: 'security', status: 'open', owner: 'Platform', identifiedAt: todayKey() },
-  { id: uid(), title: 'React Native 0.63 устарел', description: 'Mobile app нужен upgrade path', severity: 'medium', category: 'technical', status: 'open', owner: 'Mobile', identifiedAt: todayKey() },
-  { id: uid(), title: 'SEO/Domain/Payment managed-service', description: 'Клиенты ждут команду. Зона автоматизации', severity: 'medium', category: 'product', status: 'open', owner: 'Product', identifiedAt: todayKey() },
-  { id: uid(), title: '4 типа токенов усложняют session management', description: 'Нужна схема владения сессией', severity: 'medium', category: 'technical', status: 'open', owner: 'Backend', identifiedAt: todayKey() },
-  { id: uid(), title: 'Два Nx workspace для сайтов', description: 'Один production, второй старый. Требуется чистка', severity: 'low', category: 'process', status: 'open', owner: 'Frontend', identifiedAt: todayKey() },
-  { id: uid(), title: 'Mock-админка может путаться с прод-кодом', description: 'Отделить демо и production контуры', severity: 'low', category: 'process', status: 'open', owner: 'PM', identifiedAt: todayKey() },
-  { id: uid(), title: 'Темы и шаблоны смешаны в терминологии', description: 'Выровнять с маркетингом', severity: 'low', category: 'product', status: 'open', owner: 'Product', identifiedAt: todayKey() },
-]
-
-const defaultDecisions: Decision[] = [
-  {
-    id: uid(),
-    date: todayKey(),
-    title: 'WIP-лимит “В работе” равен 3',
-    status: 'accepted',
-    context: 'PM работает один и должен видеть реальные ограничения фокуса.',
-    decision: 'Четвёртая задача не переносится в колонку “В работе”.',
-    alternatives: 'Мягкое предупреждение, отдельные лимиты по проектам.',
-    consequences: 'Меньше параллельной работы, быстрее видно перегруз.',
-    tags: ['workflow', 'focus'],
-  },
-]
-
-const defaultNotes: Note[] = [
-  {
-    id: uid(),
-    title: 'Scratchpad',
-    content: '## Сегодня\n\n- Проверить P0\n- Закрыть один риск\n- Записать решение, если меняется scope',
-    pinned: true,
-    tags: ['daily'],
-    updatedAt: new Date().toISOString(),
-  },
-]
-
-const defaultTemplates: Template[] = [
-  {
-    id: uid(),
-    name: 'ТЗ на feature',
-    description: 'Короткая структура задачи для разработки',
-    category: 'task',
-    usageCount: 0,
-    content: '## Контекст\n\n## Требование\n\n## Acceptance criteria\n- [ ] \n\n## Риски',
-  },
-  {
-    id: uid(),
-    name: 'Bug report',
-    description: 'Минимальный формат бага',
-    category: 'bug',
-    usageCount: 0,
-    content: '## Что произошло\n\n## Как повторить\n1. \n\n## Ожидаемо\n\n## Фактически',
-  },
-  {
-    id: uid(),
-    name: 'Mini ADR',
-    description: 'Запись продуктового или технического решения',
-    category: 'decision',
-    usageCount: 0,
-    content: '## Context\n\n## Decision\n\n## Alternatives\n\n## Consequences',
-  },
-]
-
 const emptyPomodoro: PomodoroState = {
   running: false,
   mode: 'focus',
@@ -378,185 +258,502 @@ const emptyPomodoro: PomodoroState = {
   cyclesCompleted: 0,
 }
 
-const useAppStore = create<AppState>()(
-  persist(
-    (set, get) => ({
-      tasks: defaultTasks,
-      flags: defaultFlags,
-      decisions: defaultDecisions,
-      notes: defaultNotes,
-      retros: [],
-      templates: defaultTemplates,
-      mit: { date: todayKey(), taskId: defaultTasks[0]?.id, completed: false },
-      pomodoro: emptyPomodoro,
-      theme: 'dark',
-      accentColor: '#f0542d',
-      onboardingDone: false,
-      createTask: (input) => {
-        const now = new Date().toISOString()
-        const task: Task = {
-          ...input,
-          id: uid(),
-          actualMinutes: 0,
-          pomodoroSessions: 0,
-          position: get().tasks.length + 1,
-          createdAt: now,
-          updatedAt: now,
-        }
-        set({ tasks: [task, ...get().tasks] })
-        toast.success('Задача создана')
-      },
-      updateTask: (id, patch) => {
-        const prev = get().tasks
-        set({ tasks: prev.map((task) => (task.id === id ? { ...task, ...patch, updatedAt: new Date().toISOString() } : task)) })
-      },
-      deleteTask: (id) => {
-        const task = get().tasks.find((item) => item.id === id)
-        set({
-          tasks: get().tasks.filter((item) => item.id !== id),
-          mit: get().mit.taskId === id ? { date: todayKey(), completed: false } : get().mit,
-        })
-        if (task) toast.success('Задача удалена')
-      },
-      moveTask: (id, status) => {
-        const current = get().tasks.find((task) => task.id === id)
-        if (!current) return false
-        if (status === 'progress') {
-          const activeProgress = get().tasks.filter((task) => task.status === 'progress' && task.id !== id).length
-          if (activeProgress >= WIP_LIMIT) {
-            toast.error('WIP-лимит: в работе может быть не больше 3 задач')
-            return false
-          }
-        }
-        get().updateTask(id, {
-          status,
-          completedAt: status === 'done' ? new Date().toISOString() : current.completedAt,
-        })
-        return true
-      },
-      bulkMove: (ids, status) => {
-        const canMoveToProgress = status !== 'progress' || get().tasks.filter((task) => task.status === 'progress' && !ids.includes(task.id)).length + ids.length <= WIP_LIMIT
-        if (!canMoveToProgress) {
-          toast.error('Bulk action отменён: превышен WIP-лимит')
-          return
-        }
-        set({
-          tasks: get().tasks.map((task) =>
-            ids.includes(task.id)
-              ? {
-                  ...task,
-                  status,
-                  completedAt: status === 'done' ? new Date().toISOString() : task.completedAt,
-                  updatedAt: new Date().toISOString(),
-                }
-              : task,
-          ),
-        })
-        toast.success('Задачи обновлены')
-      },
-      setMit: (taskId) => {
-        set({ mit: { date: todayKey(), taskId, completed: false } })
-        toast.success(taskId ? 'MIT выбран' : 'MIT сброшен')
-      },
-      toggleTheme: () => set({ theme: get().theme === 'dark' ? 'light' : 'dark' }),
-      setOnboardingDone: () => set({ onboardingDone: true }),
-      startPomodoro: (taskId) => {
-        if ('Notification' in window && Notification.permission === 'default') {
-          void Notification.requestPermission()
-        }
-        set({
-          pomodoro: {
-            ...get().pomodoro,
-            running: true,
-            taskId,
-            startedAt: get().pomodoro.startedAt ?? new Date().toISOString(),
-          },
-        })
-      },
-      pausePomodoro: () => set({ pomodoro: { ...get().pomodoro, running: false } }),
-      stopPomodoro: (interrupted = true) => {
-        const p = get().pomodoro
-        if (!interrupted && p.mode === 'focus' && p.taskId) {
-          const minutes = Math.round((FOCUS_SECONDS - p.secondsLeft) / 60) || 25
-          set({
-            tasks: get().tasks.map((task) =>
-              task.id === p.taskId
-                ? {
-                    ...task,
-                    actualMinutes: task.actualMinutes + minutes,
-                    pomodoroSessions: task.pomodoroSessions + 1,
-                    updatedAt: new Date().toISOString(),
-                  }
-                : task,
-            ),
-          })
-        }
-        set({ pomodoro: emptyPomodoro })
-      },
-      tickPomodoro: () => {
-        const p = get().pomodoro
-        if (!p.running) return
-        if (p.secondsLeft > 1) {
-          set({ pomodoro: { ...p, secondsLeft: p.secondsLeft - 1 } })
-          return
-        }
-        if (p.mode === 'focus' && p.taskId) {
-          set({
-            tasks: get().tasks.map((task) =>
-              task.id === p.taskId
-                ? {
-                    ...task,
-                    actualMinutes: task.actualMinutes + 25,
-                    pomodoroSessions: task.pomodoroSessions + 1,
-                    updatedAt: new Date().toISOString(),
-                  }
-                : task,
-            ),
-          })
-        }
-        const nextCycles = p.mode === 'focus' ? p.cyclesCompleted + 1 : p.cyclesCompleted
-        const nextMode = p.mode === 'focus' ? (nextCycles % 4 === 0 ? 'long_break' : 'short_break') : 'focus'
-        const nextSeconds = nextMode === 'focus' ? FOCUS_SECONDS : nextMode === 'long_break' ? LONG_BREAK_SECONDS : SHORT_BREAK_SECONDS
-        if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification(p.mode === 'focus' ? 'Фокус завершён' : 'Перерыв завершён')
-        }
-        toast.success(p.mode === 'focus' ? 'Фокус завершён' : 'Перерыв завершён')
-        set({ pomodoro: { ...p, mode: nextMode, secondsLeft: nextSeconds, cyclesCompleted: nextCycles, running: false, startedAt: undefined } })
-      },
-      upsertFlag: (flag) => {
-        const exists = get().flags.some((item) => item.id === flag.id)
-        set({ flags: exists ? get().flags.map((item) => (item.id === flag.id ? flag : item)) : [flag, ...get().flags] })
-      },
-      upsertDecision: (decision) => {
-        const exists = get().decisions.some((item) => item.id === decision.id)
-        set({ decisions: exists ? get().decisions.map((item) => (item.id === decision.id ? decision : item)) : [decision, ...get().decisions] })
-        toast.success('Решение сохранено')
-      },
-      upsertNote: (note) => {
-        const exists = get().notes.some((item) => item.id === note.id)
-        set({ notes: exists ? get().notes.map((item) => (item.id === note.id ? note : item)) : [note, ...get().notes] })
-      },
-      upsertRetro: (retro) => {
-        const exists = get().retros.some((item) => item.id === retro.id)
-        set({ retros: exists ? get().retros.map((item) => (item.id === retro.id ? retro : item)) : [retro, ...get().retros] })
-        toast.success('Ретро сохранено')
-      },
-      useTemplate: (id) => set({ templates: get().templates.map((item) => (item.id === id ? { ...item, usageCount: item.usageCount + 1 } : item)) }),
-      importData: (data) => {
-        set({
-          tasks: data.tasks ?? get().tasks,
-          flags: data.flags ?? get().flags,
-          decisions: data.decisions ?? get().decisions,
-          notes: data.notes ?? get().notes,
-          retros: data.retros ?? get().retros,
-          templates: data.templates ?? get().templates,
-        })
-        toast.success('Данные импортированы')
-      },
-    }),
-    { name: 'pm-cockpit-state' },
-  ),
-)
+function getClient() {
+  if (!supabase) throw new Error('Supabase не настроен')
+  return supabase
+}
+
+function taskFromDb(row: any): Task {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description ?? '',
+    project: row.project,
+    type: row.type,
+    impact: row.impact,
+    effort: row.effort,
+    priority: row.priority,
+    status: row.status,
+    entryPoint: row.entry_point ?? '',
+    acceptanceCriteria: Array.isArray(row.acceptance_criteria) ? row.acceptance_criteria : [],
+    tags: row.tags ?? [],
+    dueDate: row.due_date ?? undefined,
+    estimatedMinutes: row.estimated_minutes ?? undefined,
+    actualMinutes: row.actual_minutes ?? 0,
+    pomodoroSessions: row.pomodoro_sessions ?? 0,
+    position: row.position ?? 0,
+    createdAt: row.created_at ?? new Date().toISOString(),
+    updatedAt: row.updated_at ?? new Date().toISOString(),
+    completedAt: row.completed_at ?? undefined,
+  }
+}
+
+function taskToDb(task: Task, userId: string) {
+  return {
+    id: task.id,
+    user_id: userId,
+    title: task.title,
+    description: task.description,
+    project: task.project,
+    type: task.type,
+    impact: task.impact,
+    effort: task.effort,
+    priority: task.priority,
+    status: task.status,
+    entry_point: task.entryPoint,
+    acceptance_criteria: task.acceptanceCriteria,
+    tags: task.tags,
+    due_date: task.dueDate ?? null,
+    estimated_minutes: task.estimatedMinutes ?? null,
+    actual_minutes: task.actualMinutes,
+    pomodoro_sessions: task.pomodoroSessions,
+    completed_at: task.completedAt ?? null,
+    position: task.position,
+  }
+}
+
+function flagFromDb(row: any): Flag {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description ?? '',
+    severity: row.severity,
+    category: row.category,
+    status: row.status,
+    owner: row.owner ?? '',
+    identifiedAt: row.identified_at ?? todayKey(),
+    targetResolutionDate: row.target_resolution_date ?? undefined,
+  }
+}
+
+function flagToDb(flag: Flag, userId: string) {
+  return {
+    id: flag.id,
+    user_id: userId,
+    title: flag.title,
+    description: flag.description,
+    severity: flag.severity,
+    category: flag.category,
+    status: flag.status,
+    owner: flag.owner,
+    identified_at: flag.identifiedAt,
+    target_resolution_date: flag.targetResolutionDate ?? null,
+  }
+}
+
+function decisionFromDb(row: any): Decision {
+  return {
+    id: row.id,
+    date: row.date,
+    title: row.title,
+    status: row.status,
+    context: row.context ?? '',
+    decision: row.decision ?? '',
+    alternatives: row.alternatives ?? '',
+    consequences: row.consequences ?? '',
+    tags: row.tags ?? [],
+  }
+}
+
+function decisionToDb(decision: Decision, userId: string) {
+  return {
+    id: decision.id,
+    user_id: userId,
+    date: decision.date,
+    title: decision.title,
+    status: decision.status,
+    context: decision.context,
+    decision: decision.decision,
+    alternatives: decision.alternatives,
+    consequences: decision.consequences,
+    tags: decision.tags,
+  }
+}
+
+function noteFromDb(row: any): Note {
+  return {
+    id: row.id,
+    title: row.title ?? '',
+    content: row.content ?? '',
+    pinned: row.pinned ?? false,
+    tags: row.tags ?? [],
+    updatedAt: row.updated_at ?? new Date().toISOString(),
+  }
+}
+
+function noteToDb(note: Note, userId: string) {
+  return {
+    id: note.id,
+    user_id: userId,
+    title: note.title,
+    content: note.content,
+    pinned: note.pinned,
+    tags: note.tags,
+  }
+}
+
+function retroFromDb(row: any): Retro {
+  return {
+    id: row.id,
+    date: row.date,
+    type: row.type,
+    field1: row.field1 ?? '',
+    field2: row.field2 ?? '',
+    field3: row.field3 ?? '',
+    mood: row.mood ?? 3,
+    energy: row.energy ?? 3,
+    notes: row.notes ?? '',
+  }
+}
+
+function retroToDb(retro: Retro, userId: string) {
+  return {
+    id: retro.id,
+    user_id: userId,
+    date: retro.date,
+    type: retro.type,
+    field1: retro.field1,
+    field2: retro.field2,
+    field3: retro.field3,
+    mood: retro.mood,
+    energy: retro.energy,
+    notes: retro.notes,
+  }
+}
+
+function templateFromDb(row: any): Template {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? '',
+    category: row.category ?? 'custom',
+    content: row.content ?? '',
+    usageCount: row.usage_count ?? 0,
+  }
+}
+
+function templateToDb(template: Template, userId: string) {
+  return {
+    id: template.id,
+    user_id: userId,
+    name: template.name,
+    description: template.description,
+    category: template.category,
+    content: template.content,
+    usage_count: template.usageCount,
+  }
+}
+
+function resetDataState() {
+  return {
+    tasks: [],
+    flags: [],
+    decisions: [],
+    notes: [],
+    retros: [],
+    templates: [],
+    mit: { date: todayKey(), completed: false },
+    pomodoro: emptyPomodoro,
+  }
+}
+
+const useAppStore = create<AppState>()((set, get) => ({
+  currentUser: null,
+  authReady: false,
+  dataLoading: false,
+  dataError: undefined,
+  ...resetDataState(),
+  theme: 'dark',
+  accentColor: '#f0542d',
+  onboardingDone: false,
+  initialize: async () => {
+    if (!hasSupabaseConfig || !supabase) {
+      set({ authReady: true, dataError: 'Supabase env не настроены' })
+      return
+    }
+    const { data, error } = await supabase.auth.getSession()
+    if (error) {
+      console.error(error)
+      set({ authReady: true, dataError: 'Не удалось восстановить сессию' })
+      return
+    }
+    const user = data.session?.user ?? null
+    set({ currentUser: user, authReady: true })
+    if (user) await get().loadData()
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') set({ currentUser: null, ...resetDataState() })
+      if (event === 'SIGNED_IN' && session?.user) {
+        set({ currentUser: session.user })
+        void get().loadData()
+      }
+    })
+  },
+  loadData: async () => {
+    const user = get().currentUser
+    if (!user) return
+    const client = getClient()
+    set({ dataLoading: true, dataError: undefined })
+    try {
+      const [tasksRes, flagsRes, decisionsRes, notesRes, retrosRes, templatesRes, mitRes, profileRes] = await Promise.all([
+        client.from('tasks').select('*').order('position', { ascending: true }).order('created_at', { ascending: false }),
+        client.from('red_flags').select('*').order('created_at', { ascending: false }),
+        client.from('decisions').select('*').order('date', { ascending: false }),
+        client.from('notes').select('*').order('updated_at', { ascending: false }),
+        client.from('retros').select('*').order('date', { ascending: false }),
+        client.from('user_templates').select('*').order('created_at', { ascending: false }),
+        client.from('daily_mit').select('*').eq('date', todayKey()).maybeSingle(),
+        client.from('profiles').select('theme, accent_color').eq('id', user.id).maybeSingle(),
+      ])
+      const firstError = [tasksRes, flagsRes, decisionsRes, notesRes, retrosRes, templatesRes, mitRes, profileRes].find((res) => res.error)?.error
+      if (firstError) throw firstError
+      set({
+        tasks: (tasksRes.data ?? []).map(taskFromDb),
+        flags: (flagsRes.data ?? []).map(flagFromDb),
+        decisions: (decisionsRes.data ?? []).map(decisionFromDb),
+        notes: (notesRes.data ?? []).map(noteFromDb),
+        retros: (retrosRes.data ?? []).map(retroFromDb),
+        templates: (templatesRes.data ?? []).map(templateFromDb),
+        mit: mitRes.data ? { date: mitRes.data.date, taskId: mitRes.data.task_id ?? undefined, completed: mitRes.data.completed ?? false } : { date: todayKey(), completed: false },
+        theme: profileRes.data?.theme ?? get().theme,
+        accentColor: profileRes.data?.accent_color ?? get().accentColor,
+        dataLoading: false,
+      })
+    } catch (error) {
+      console.error(error)
+      set({ dataLoading: false, dataError: 'Не удалось загрузить данные из Supabase' })
+      toast.error('Не удалось загрузить данные из Supabase')
+    }
+  },
+  signIn: async (email, password) => {
+    const { error } = await getClient().auth.signInWithPassword({ email, password })
+    if (error) throw error
+  },
+  signUp: async (email, password) => {
+    const { error } = await getClient().auth.signUp({ email, password, options: { data: { display_name: email.split('@')[0] } } })
+    if (error) throw error
+  },
+  signOut: async () => {
+    const { error } = await getClient().auth.signOut()
+    if (error) throw error
+    set({ currentUser: null, ...resetDataState() })
+  },
+  createTask: async (input) => {
+    const user = get().currentUser
+    if (!user) return
+    const now = new Date().toISOString()
+    const task: Task = { ...input, id: uid(), actualMinutes: 0, pomodoroSessions: 0, position: get().tasks.length + 1, createdAt: now, updatedAt: now }
+    const prev = get().tasks
+    set({ tasks: [task, ...prev] })
+    const { error } = await getClient().from('tasks').insert(taskToDb(task, user.id))
+    if (error) {
+      console.error(error)
+      set({ tasks: prev })
+      toast.error('Не удалось сохранить задачу. Проверьте подключение')
+      return
+    }
+    toast.success('Задача создана')
+  },
+  updateTask: async (id, patch) => {
+    const user = get().currentUser
+    if (!user) return
+    const prev = get().tasks
+    const nextTasks = prev.map((task) => (task.id === id ? { ...task, ...patch, updatedAt: new Date().toISOString() } : task))
+    const nextTask = nextTasks.find((task) => task.id === id)
+    if (!nextTask) return
+    set({ tasks: nextTasks })
+    const { error } = await getClient().from('tasks').update(taskToDb(nextTask, user.id)).eq('id', id)
+    if (error) {
+      console.error(error)
+      set({ tasks: prev })
+      toast.error('Не удалось сохранить задачу. Проверьте подключение')
+    }
+  },
+  deleteTask: async (id) => {
+    const prevTasks = get().tasks
+    const prevMit = get().mit
+    set({ tasks: prevTasks.filter((item) => item.id !== id), mit: prevMit.taskId === id ? { date: todayKey(), completed: false } : prevMit })
+    const { error } = await getClient().from('tasks').delete().eq('id', id)
+    if (error) {
+      console.error(error)
+      set({ tasks: prevTasks, mit: prevMit })
+      toast.error('Не удалось удалить задачу')
+      return
+    }
+    if (prevMit.taskId === id) await get().setMit(undefined)
+    toast.success('Задача удалена')
+  },
+  moveTask: (id, status) => {
+    const current = get().tasks.find((task) => task.id === id)
+    if (!current) return false
+    if (status === 'progress') {
+      const activeProgress = get().tasks.filter((task) => task.status === 'progress' && task.id !== id).length
+      if (activeProgress >= WIP_LIMIT) {
+        toast.error('WIP-лимит: в работе может быть не больше 3 задач')
+        return false
+      }
+    }
+    void get().updateTask(id, { status, completedAt: status === 'done' ? new Date().toISOString() : current.completedAt })
+    return true
+  },
+  bulkMove: async (ids, status) => {
+    const canMoveToProgress = status !== 'progress' || get().tasks.filter((task) => task.status === 'progress' && !ids.includes(task.id)).length + ids.length <= WIP_LIMIT
+    if (!canMoveToProgress) {
+      toast.error('Bulk action отменён: превышен WIP-лимит')
+      return
+    }
+    const prev = get().tasks
+    const next = prev.map((task) => (ids.includes(task.id) ? { ...task, status, completedAt: status === 'done' ? new Date().toISOString() : task.completedAt, updatedAt: new Date().toISOString() } : task))
+    set({ tasks: next })
+    const { error } = await getClient().from('tasks').update({ status, completed_at: status === 'done' ? new Date().toISOString() : null }).in('id', ids)
+    if (error) {
+      console.error(error)
+      set({ tasks: prev })
+      toast.error('Не удалось обновить задачи')
+      return
+    }
+    toast.success('Задачи обновлены')
+  },
+  setMit: async (taskId) => {
+    const user = get().currentUser
+    if (!user) return
+    const prev = get().mit
+    const mit = { date: todayKey(), taskId, completed: false }
+    set({ mit })
+    const { error } = await getClient().from('daily_mit').upsert({ user_id: user.id, date: mit.date, task_id: taskId ?? null, completed: false })
+    if (error) {
+      console.error(error)
+      set({ mit: prev })
+      toast.error('Не удалось сохранить MIT')
+      return
+    }
+    toast.success(taskId ? 'MIT выбран' : 'MIT сброшен')
+  },
+  toggleTheme: () => {
+    const next = get().theme === 'dark' ? 'light' : 'dark'
+    set({ theme: next })
+    const user = get().currentUser
+    if (user) void getClient().from('profiles').update({ theme: next }).eq('id', user.id)
+  },
+  setOnboardingDone: () => set({ onboardingDone: true }),
+  startPomodoro: (taskId) => {
+    if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission()
+    set({ pomodoro: { ...get().pomodoro, running: true, taskId, startedAt: get().pomodoro.startedAt ?? new Date().toISOString() } })
+  },
+  pausePomodoro: () => set({ pomodoro: { ...get().pomodoro, running: false } }),
+  stopPomodoro: (interrupted = true) => {
+    const p = get().pomodoro
+    if (!interrupted && p.mode === 'focus' && p.taskId) {
+      const minutes = Math.round((FOCUS_SECONDS - p.secondsLeft) / 60) || 25
+      const task = get().tasks.find((item) => item.id === p.taskId)
+      if (task) void get().updateTask(task.id, { actualMinutes: task.actualMinutes + minutes, pomodoroSessions: task.pomodoroSessions + 1 })
+    }
+    set({ pomodoro: emptyPomodoro })
+  },
+  tickPomodoro: () => {
+    const p = get().pomodoro
+    if (!p.running) return
+    if (p.secondsLeft > 1) {
+      set({ pomodoro: { ...p, secondsLeft: p.secondsLeft - 1 } })
+      return
+    }
+    if (p.mode === 'focus' && p.taskId) {
+      const task = get().tasks.find((item) => item.id === p.taskId)
+      if (task) void get().updateTask(task.id, { actualMinutes: task.actualMinutes + 25, pomodoroSessions: task.pomodoroSessions + 1 })
+    }
+    const nextCycles = p.mode === 'focus' ? p.cyclesCompleted + 1 : p.cyclesCompleted
+    const nextMode = p.mode === 'focus' ? (nextCycles % 4 === 0 ? 'long_break' : 'short_break') : 'focus'
+    const nextSeconds = nextMode === 'focus' ? FOCUS_SECONDS : nextMode === 'long_break' ? LONG_BREAK_SECONDS : SHORT_BREAK_SECONDS
+    if ('Notification' in window && Notification.permission === 'granted') new Notification(p.mode === 'focus' ? 'Фокус завершён' : 'Перерыв завершён')
+    toast.success(p.mode === 'focus' ? 'Фокус завершён' : 'Перерыв завершён')
+    set({ pomodoro: { ...p, mode: nextMode, secondsLeft: nextSeconds, cyclesCompleted: nextCycles, running: false, startedAt: undefined } })
+  },
+  upsertFlag: async (flag) => {
+    const user = get().currentUser
+    if (!user) return
+    const prev = get().flags
+    const exists = prev.some((item) => item.id === flag.id)
+    set({ flags: exists ? prev.map((item) => (item.id === flag.id ? flag : item)) : [flag, ...prev] })
+    const { error } = await getClient().from('red_flags').upsert(flagToDb(flag, user.id))
+    if (error) {
+      console.error(error)
+      set({ flags: prev })
+      toast.error('Не удалось сохранить флаг')
+    }
+  },
+  upsertDecision: async (decision) => {
+    const user = get().currentUser
+    if (!user) return
+    const prev = get().decisions
+    const exists = prev.some((item) => item.id === decision.id)
+    set({ decisions: exists ? prev.map((item) => (item.id === decision.id ? decision : item)) : [decision, ...prev] })
+    const { error } = await getClient().from('decisions').upsert(decisionToDb(decision, user.id))
+    if (error) {
+      console.error(error)
+      set({ decisions: prev })
+      toast.error('Не удалось сохранить решение')
+      return
+    }
+    toast.success('Решение сохранено')
+  },
+  upsertNote: async (note) => {
+    const user = get().currentUser
+    if (!user) return
+    const nextNote = { ...note, updatedAt: new Date().toISOString() }
+    const prev = get().notes
+    const exists = prev.some((item) => item.id === nextNote.id)
+    set({ notes: exists ? prev.map((item) => (item.id === nextNote.id ? nextNote : item)) : [nextNote, ...prev] })
+    const { error } = await getClient().from('notes').upsert(noteToDb(nextNote, user.id))
+    if (error) {
+      console.error(error)
+      set({ notes: prev })
+      toast.error('Не удалось сохранить заметку')
+    }
+  },
+  upsertRetro: async (retro) => {
+    const user = get().currentUser
+    if (!user) return
+    const prev = get().retros
+    const exists = prev.some((item) => item.id === retro.id)
+    set({ retros: exists ? prev.map((item) => (item.id === retro.id ? retro : item)) : [retro, ...prev] })
+    const { error } = await getClient().from('retros').upsert(retroToDb(retro, user.id))
+    if (error) {
+      console.error(error)
+      set({ retros: prev })
+      toast.error('Не удалось сохранить ретро')
+      return
+    }
+    toast.success('Ретро сохранено')
+  },
+  useTemplate: async (id) => {
+    const template = get().templates.find((item) => item.id === id)
+    if (!template) return
+    const next = { ...template, usageCount: template.usageCount + 1 }
+    set({ templates: get().templates.map((item) => (item.id === id ? next : item)) })
+    const user = get().currentUser
+    if (user) await getClient().from('user_templates').upsert(templateToDb(next, user.id))
+  },
+  importData: async (data) => {
+    const user = get().currentUser
+    if (!user) return
+    const client = getClient()
+    const operations = []
+    if (data.tasks?.length) operations.push(client.from('tasks').upsert(data.tasks.map((task) => taskToDb(task, user.id))))
+    if (data.flags?.length) operations.push(client.from('red_flags').upsert(data.flags.map((flag) => flagToDb(flag, user.id))))
+    if (data.decisions?.length) operations.push(client.from('decisions').upsert(data.decisions.map((decision) => decisionToDb(decision, user.id))))
+    if (data.notes?.length) operations.push(client.from('notes').upsert(data.notes.map((note) => noteToDb(note, user.id))))
+    if (data.retros?.length) operations.push(client.from('retros').upsert(data.retros.map((retro) => retroToDb(retro, user.id))))
+    if (data.templates?.length) operations.push(client.from('user_templates').upsert(data.templates.map((template) => templateToDb(template, user.id))))
+    const results = await Promise.all(operations)
+    const error = results.find((result) => result.error)?.error
+    if (error) {
+      console.error(error)
+      toast.error('Не удалось импортировать данные')
+      return
+    }
+    await get().loadData()
+    toast.success('Данные импортированы')
+  },
+}))
 
 function App() {
   const [page, setPage] = useState<Page>('today')
@@ -564,7 +761,11 @@ function App() {
   const [editingTask, setEditingTask] = useState<Task | undefined>()
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [hotkeysOpen, setHotkeysOpen] = useState(false)
-  const { theme, accentColor, tickPomodoro, pomodoro, toggleTheme, onboardingDone, setOnboardingDone } = useAppStore()
+  const { theme, accentColor, tickPomodoro, pomodoro, toggleTheme, onboardingDone, setOnboardingDone, initialize, authReady, currentUser, dataLoading, dataError } = useAppStore()
+
+  useEffect(() => {
+    void initialize()
+  }, [initialize])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -629,12 +830,34 @@ function App() {
     }
   }
 
+  if (!hasSupabaseConfig) {
+    return <ConfigRequiredPage />
+  }
+
+  if (!authReady) {
+    return <FullPageState title="Загрузка" text="Восстанавливаем сессию Supabase." />
+  }
+
+  if (!currentUser) {
+    return <LoginPage />
+  }
+
   return (
     <div className="min-h-screen bg-cockpit-bg text-cockpit-text">
       <div className="flex min-h-screen">
         <Sidebar page={page} setPage={setPage} />
         <main className="min-w-0 flex-1">
           <TopBar page={page} setPage={setPage} onCreate={() => { setEditingTask(undefined); setTaskModalOpen(true) }} onPalette={() => setPaletteOpen(true)} onTheme={toggleTheme} />
+          {dataError && (
+            <div className="mx-4 mt-4 rounded border border-[var(--danger)] bg-cockpit-card p-3 text-[var(--danger)] md:mx-6">
+              {dataError}
+            </div>
+          )}
+          {dataLoading && (
+            <div className="mx-4 mt-4 rounded border border-[var(--border-primary)] bg-cockpit-card p-3 text-[var(--text-secondary)] md:mx-6">
+              Загрузка данных из Supabase...
+            </div>
+          )}
           {renderPage()}
         </main>
       </div>
@@ -643,6 +866,88 @@ function App() {
       <HotkeysModal open={hotkeysOpen} onClose={() => setHotkeysOpen(false)} />
       {!onboardingDone && <Onboarding onClose={setOnboardingDone} onCreate={() => setTaskModalOpen(true)} />}
       {pomodoro.running && <PomodoroFloating setPage={setPage} />}
+    </div>
+  )
+}
+
+function ConfigRequiredPage() {
+  return (
+    <FullPageState
+      title="Supabase не настроен"
+      text="Добавьте VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY в Vercel Environment Variables и в локальный .env.local."
+    />
+  )
+}
+
+function FullPageState({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="grid min-h-screen place-items-center bg-cockpit-bg p-4 text-cockpit-text">
+      <div className="card w-full max-w-xl p-6">
+        <div className="text-display text-3xl">{title}</div>
+        <p className="mt-3 text-[var(--text-secondary)]">{text}</p>
+      </div>
+    </div>
+  )
+}
+
+function LoginPage() {
+  const signIn = useAppStore((state) => state.signIn)
+  const signUp = useAppStore((state) => state.signUp)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [loading, setLoading] = useState(false)
+
+  const submit = async () => {
+    if (!email || !password) {
+      toast.error('Введите email и пароль')
+      return
+    }
+    setLoading(true)
+    try {
+      if (mode === 'login') {
+        await signIn(email, password)
+      } else {
+        await signUp(email, password)
+        toast.success('Аккаунт создан. Если включено подтверждение email, проверьте почту')
+      }
+    } catch (error) {
+      console.error(error)
+      toast.error(mode === 'login' ? 'Не удалось войти' : 'Не удалось создать аккаунт')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="grid min-h-screen place-items-center bg-cockpit-bg p-4 text-cockpit-text">
+      <div className="card w-full max-w-md p-6">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="grid h-10 w-10 place-items-center rounded border border-[var(--border-accent)] text-[var(--accent)]">
+            <LayoutDashboard size={18} />
+          </div>
+          <div>
+            <div className="text-display text-2xl">PM Cockpit</div>
+            <div className="mt-1 text-[10px] uppercase text-[var(--text-tertiary)]">Supabase Auth</div>
+          </div>
+        </div>
+        <div className="grid gap-3">
+          <label>
+            <span className="mb-1 block text-[10px] uppercase text-[var(--text-tertiary)]">Email</span>
+            <input className="input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+          </label>
+          <label>
+            <span className="mb-1 block text-[10px] uppercase text-[var(--text-tertiary)]">Пароль</span>
+            <input className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+          </label>
+        </div>
+        <button className="btn btn-primary mt-5 w-full" disabled={loading} onClick={submit}>
+          {mode === 'login' ? 'Войти' : 'Создать аккаунт'}
+        </button>
+        <button className="btn mt-3 w-full" disabled={loading} onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}>
+          {mode === 'login' ? 'Регистрация' : 'У меня есть аккаунт'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -695,6 +1000,7 @@ function Sidebar({ page, setPage }: { page: Page; setPage: (page: Page) => void 
 
 function TopBar({ page, setPage, onCreate, onPalette, onTheme }: { page: Page; setPage: (page: Page) => void; onCreate: () => void; onPalette: () => void; onTheme: () => void }) {
   const theme = useAppStore((state) => state.theme)
+  const signOut = useAppStore((state) => state.signOut)
   const openFlags = useAppStore((state) => state.flags.filter((flag) => flag.status === 'open').length)
   const p0 = useAppStore((state) => state.tasks.filter((task) => task.priority === 'P0' && task.status !== 'done' && task.status !== 'archived').length)
   const mobilePages: Array<{ id: Page; label: string }> = [
@@ -725,6 +1031,9 @@ function TopBar({ page, setPage, onCreate, onPalette, onTheme }: { page: Page; s
           </button>
           <button className="btn" aria-label="Переключить тему" onClick={onTheme}>
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
+          <button className="btn hidden lg:inline-flex" onClick={() => void signOut()}>
+            Выйти
           </button>
           <button className="btn btn-primary" onClick={onCreate}>
             <Plus size={15} /> <span className="hidden lg:inline">Создать</span>
