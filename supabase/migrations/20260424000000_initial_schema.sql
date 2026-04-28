@@ -9,7 +9,7 @@ create table if not exists profiles (
   pomodoro_break_min int default 5,
   pomodoro_long_break_min int default 15,
   theme text default 'dark' check (theme in ('dark','light')),
-  accent_color text default '#f0542d',
+  accent_color text default '#8b5cf6',
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );

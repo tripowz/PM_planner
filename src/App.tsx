@@ -238,17 +238,17 @@ const STATUS_LABELS: Record<Status, string> = {
 const BOARD_STATUSES: Status[] = ['inbox', 'backlog', 'week', 'progress', 'review', 'done']
 
 const PRIORITY_COLORS: Record<Priority, string> = {
-  P0: '#dc2626',
-  P1: '#f0542d',
-  P2: '#e8b74a',
-  P3: '#4a90e2',
+  P0: '#ffffff',
+  P1: '#c4b5fd',
+  P2: '#8b5cf6',
+  P3: '#6d687a',
 }
 
 const SEVERITY_COLORS: Record<Severity, string> = {
-  critical: '#dc2626',
-  high: '#f0542d',
-  medium: '#e8b74a',
-  low: '#4a90e2',
+  critical: '#ffffff',
+  high: '#c4b5fd',
+  medium: '#8b5cf6',
+  low: '#6d687a',
 }
 
 const emptyPomodoro: PomodoroState = {
@@ -464,7 +464,7 @@ const useAppStore = create<AppState>()((set, get) => ({
   dataError: undefined,
   ...resetDataState(),
   theme: 'dark',
-  accentColor: '#f0542d',
+  accentColor: '#8b5cf6',
   onboardingDone: false,
   initialize: async () => {
     if (!hasSupabaseConfig || !supabase) {
@@ -515,7 +515,7 @@ const useAppStore = create<AppState>()((set, get) => ({
         templates: (templatesRes.data ?? []).map(templateFromDb),
         mit: mitRes.data ? { date: mitRes.data.date, taskId: mitRes.data.task_id ?? undefined, completed: mitRes.data.completed ?? false } : { date: todayKey(), completed: false },
         theme: profileRes.data?.theme ?? get().theme,
-        accentColor: profileRes.data?.accent_color ?? get().accentColor,
+        accentColor: profileRes.data?.accent_color === '#f0542d' ? '#8b5cf6' : profileRes.data?.accent_color ?? get().accentColor,
         dataLoading: false,
       })
     } catch (error) {
@@ -889,8 +889,11 @@ function ConfigRequiredPage() {
 function FullPageState({ title, text }: { title: string; text: string }) {
   return (
     <div className="grid min-h-screen place-items-center bg-cockpit-bg p-4 text-cockpit-text">
-      <div className="card w-full max-w-xl p-6">
-        <div className="text-display text-3xl">{title}</div>
+      <div className="card w-full max-w-xl p-8">
+        <div className="mb-5 grid h-12 w-12 place-items-center rounded-lg border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
+          <LayoutDashboard size={22} />
+        </div>
+        <div className="text-display text-3xl leading-tight">{title}</div>
         <p className="mt-3 text-[var(--text-secondary)]">{text}</p>
       </div>
     </div>
@@ -916,7 +919,7 @@ function LoginPage() {
         await signIn(email, password)
       } else {
         await signUp(email, password)
-        toast.success('Аккаунт создан. Если включено подтверждение email, проверьте почту')
+        toast.success('Аккаунт создан')
       }
     } catch (error) {
       console.error(error)
@@ -929,14 +932,14 @@ function LoginPage() {
 
   return (
     <div className="grid min-h-screen place-items-center bg-cockpit-bg p-4 text-cockpit-text">
-      <div className="card w-full max-w-md p-6">
+      <div className="card w-full max-w-md p-7">
         <div className="mb-6 flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded border border-[var(--border-accent)] text-[var(--accent)]">
+          <div className="grid h-11 w-11 place-items-center rounded-lg border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
             <LayoutDashboard size={18} />
           </div>
           <div>
-            <div className="text-display text-2xl">PM Cockpit</div>
-            <div className="mt-1 text-[10px] uppercase text-[var(--text-tertiary)]">Supabase Auth</div>
+            <div className="text-display text-2xl leading-none">PM Cockpit</div>
+            <div className="mt-1 text-[11px] font-semibold text-[var(--text-tertiary)]">Supabase Auth</div>
           </div>
         </div>
         <div className="grid gap-3">
@@ -976,14 +979,14 @@ function Sidebar({ page, setPage }: { page: Page; setPage: (page: Page) => void 
     { id: 'settings', label: 'Настройки', icon: Settings },
   ]
   return (
-    <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-[var(--border-primary)] bg-cockpit-panel p-4 lg:block">
+    <aside className="sticky top-0 hidden h-screen w-[272px] shrink-0 border-r border-[var(--border-primary)] bg-cockpit-panel p-4 lg:block">
       <div className="mb-6 flex items-center gap-3">
-        <div className="grid h-9 w-9 place-items-center rounded border border-[var(--border-accent)] bg-[var(--bg-hover)] text-[var(--accent)]">
+        <div className="grid h-10 w-10 place-items-center rounded-lg border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
           <LayoutDashboard size={18} />
         </div>
         <div>
           <div className="text-display text-lg leading-none">PM Cockpit</div>
-          <div className="mt-1 text-[10px] uppercase text-[var(--text-tertiary)]">SmartBooking</div>
+          <div className="mt-1 text-[11px] font-semibold text-[var(--text-tertiary)]">SmartBooking</div>
         </div>
       </div>
       <nav className="space-y-1">
@@ -993,7 +996,7 @@ function Sidebar({ page, setPage }: { page: Page; setPage: (page: Page) => void 
           return (
             <button
               key={item.id}
-              className={`flex w-full items-center gap-3 rounded px-3 py-2 text-left transition ${active ? 'bg-[var(--accent)] text-[var(--bg-primary)]' : 'text-[var(--text-secondary)] hover:bg-cockpit-hover hover:text-[var(--text-primary)]'}`}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-semibold transition ${active ? 'bg-[var(--accent)] text-white shadow-lg shadow-violet-950/30' : 'text-[var(--text-secondary)] hover:bg-cockpit-hover hover:text-[var(--text-primary)]'}`}
               onClick={() => setPage(item.id)}
             >
               <Icon size={15} />
@@ -1018,14 +1021,14 @@ function TopBar({ page, setPage, onCreate, onPalette, onTheme }: { page: Page; s
     { id: 'analytics', label: 'Аналитика' },
   ]
   return (
-    <header className="sticky top-0 z-20 border-b border-[var(--border-primary)] bg-cockpit-bg/95 px-4 py-3 backdrop-blur md:px-6">
+    <header className="sticky top-0 z-20 border-b border-[var(--border-primary)] bg-cockpit-bg/90 px-4 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.16)] backdrop-blur-xl md:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[10px] uppercase text-[var(--text-tertiary)]">
             <span>{format(new Date(), 'EEEE, d MMMM', { locale: ru })}</span>
             <span className="hidden sm:inline">/ Asia/Tashkent</span>
           </div>
-          <h1 className="text-display mt-1 text-2xl">{pageTitle(page)}</h1>
+          <h1 className="text-display mt-1 text-3xl leading-tight">{pageTitle(page)}</h1>
         </div>
         <div className="flex items-center gap-2">
           <button className="btn hidden lg:inline-flex" onClick={onPalette}>
@@ -1244,7 +1247,7 @@ function BoardPage({ openTask }: { openTask: (task: Task) => void }) {
           return (
             <section
               key={status}
-              className="min-h-[360px] rounded border border-[var(--border-primary)] bg-cockpit-panel p-3"
+              className="min-h-[360px] rounded-lg border border-[var(--border-primary)] bg-cockpit-panel p-3"
               onDragOver={(event) => event.preventDefault()}
               onDrop={() => {
                 if (draggingId) moveTask(draggingId, status)
@@ -1274,7 +1277,7 @@ function TaskCard({ task, openTask, onDragStart }: { task: Task; openTask: (task
     <article
       draggable
       onDragStart={onDragStart}
-      className="rounded border border-[var(--border-primary)] bg-cockpit-card p-3 transition hover:border-[var(--accent)]"
+      className="rounded-lg border border-[var(--border-primary)] bg-cockpit-card p-3.5 transition hover:border-[var(--accent)] hover:bg-[var(--bg-hover)]"
     >
       <button className="wrap-anywhere block w-full text-left font-semibold leading-snug" onClick={() => openTask(task)}>
         {task.title}
@@ -1618,7 +1621,7 @@ function AnalyticsPage() {
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie data={byProject} dataKey="value" nameKey="name" outerRadius={110} label>
-                {byProject.map((_, index) => <Cell key={index} fill={['#f0542d', '#4a90e2', '#4a8a4e', '#e8b74a', '#dc2626', '#8a8a87', '#c8c6c1'][index % 7]} />)}
+                {byProject.map((_, index) => <Cell key={index} fill={['#8b5cf6', '#c4b5fd', '#ffffff', '#6d687a', '#a78bfa', '#2c2934', '#d7d5de'][index % 7]} />)}
               </Pie>
               <Tooltip contentStyle={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }} />
             </PieChart>
@@ -1650,7 +1653,7 @@ function SettingsPage() {
     <PageShell>
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="card p-5">
-          <SectionHeader title="Профиль" subtitle="Локальный режим" />
+          <SectionHeader title="Профиль" subtitle="Supabase workspace" />
           <div className="mt-4 grid gap-3">
             <label>
               <span className="mb-1 block text-[10px] uppercase text-[var(--text-tertiary)]">Timezone</span>
