@@ -163,6 +163,12 @@ type Template = {
 
 type AiMode = 'spec' | 'review' | 'bug' | 'system' | 'roadmap'
 type AiProvider = 'gemini' | 'groq'
+type AiActionPlan = {
+  tasks?: unknown[]
+  flags?: unknown[]
+  decisions?: unknown[]
+  notes?: unknown[]
+}
 
 type PomodoroState = {
   running: boolean
@@ -211,7 +217,7 @@ type AppState = {
   upsertNote: (note: Note) => Promise<void>
   upsertRetro: (retro: Retro) => Promise<void>
   useTemplate: (id: string) => Promise<void>
-  importData: (data: Partial<Pick<AppState, 'tasks' | 'flags' | 'decisions' | 'notes' | 'retros' | 'templates'>>) => Promise<void>
+  importData: (data: Partial<Pick<AppState, 'tasks' | 'flags' | 'decisions' | 'notes' | 'retros' | 'templates'>>) => Promise<boolean>
 }
 
 type TaskInput = Omit<Task, 'id' | 'actualMinutes' | 'pomodoroSessions' | 'position' | 'createdAt' | 'updatedAt' | 'completedAt'>
@@ -228,6 +234,127 @@ const TASK_TYPES: TaskType[] = ['feature', 'bug', 'research', 'ops', 'tech-debt'
 const IMPACTS: Impact[] = ['high', 'medium', 'low']
 const EFFORTS: Effort[] = ['XS', 'S', 'M', 'L', 'XL']
 const PRIORITIES: Priority[] = ['P0', 'P1', 'P2', 'P3']
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {}
+}
+
+function safeString(value: unknown, fallback = '') {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback
+}
+
+function safeStringArray(value: unknown, fallback: string[] = []) {
+  if (Array.isArray(value)) return value.map((item) => safeString(item)).filter(Boolean).slice(0, 12)
+  if (typeof value === 'string' && value.trim()) return value.split(/\n|;|\|/).map((item) => item.trim()).filter(Boolean).slice(0, 12)
+  return fallback
+}
+
+function pickAllowed<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(value as T) ? value as T : fallback
+}
+
+function boundedMinutes(value: unknown, fallback = 180) {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(2400, Math.max(15, Math.round(parsed)))
+}
+
+function compactTitle(value: unknown, fallback: string) {
+  const title = safeString(value, fallback).replace(/\s+/g, ' ')
+  return title.length > 140 ? `${title.slice(0, 137)}...` : title
+}
+
+function buildAiImportData(plan: AiActionPlan | null, result: string, sourcePrompt: string, mode: AiMode, basePosition: number) {
+  const actionPlan = asRecord(plan)
+  const rawTasks = Array.isArray(actionPlan.tasks) ? actionPlan.tasks.slice(0, 18) : []
+  const rawFlags = Array.isArray(actionPlan.flags) ? actionPlan.flags.slice(0, 10) : []
+  const rawDecisions = Array.isArray(actionPlan.decisions) ? actionPlan.decisions.slice(0, 8) : []
+  const rawNotes = Array.isArray(actionPlan.notes) ? actionPlan.notes.slice(0, 4) : []
+  const now = new Date().toISOString()
+  const baseTags = ['ai', 'smartbooking']
+  const source = sourcePrompt.trim()
+
+  const tasks: Task[] = rawTasks.map((item, index) => {
+    const row = asRecord(item)
+    const title = compactTitle(row.title, `AI задача ${index + 1}`)
+    const tags = Array.from(new Set([...baseTags, ...safeStringArray(row.tags)]))
+    return {
+      id: uid(),
+      title,
+      description: safeString(row.description, source || result.slice(0, 600)),
+      project: pickAllowed(row.project, PROJECTS, 'Cross-product'),
+      type: pickAllowed(row.type, TASK_TYPES, mode === 'bug' ? 'bug' : mode === 'system' ? 'research' : 'feature'),
+      impact: pickAllowed(row.impact, IMPACTS, 'medium'),
+      effort: pickAllowed(row.effort, EFFORTS, 'M'),
+      priority: pickAllowed(row.priority, PRIORITIES, 'P2'),
+      status: pickAllowed(row.status, ['inbox', 'backlog', 'week'] as const, 'backlog'),
+      entryPoint: safeString(row.entryPoint || row.entry_point, 'SmartBooking'),
+      acceptanceCriteria: safeStringArray(row.acceptanceCriteria || row.acceptance_criteria, ['Проверено PM и dev по SmartBooking docs']),
+      tags,
+      estimatedMinutes: boundedMinutes(row.estimatedMinutes || row.estimated_minutes),
+      actualMinutes: 0,
+      pomodoroSessions: 0,
+      position: basePosition + index + 1,
+      createdAt: now,
+      updatedAt: now,
+    }
+  })
+
+  const flags: Flag[] = rawFlags.map((item, index) => {
+    const row = asRecord(item)
+    return {
+      id: uid(),
+      title: compactTitle(row.title, `AI риск ${index + 1}`),
+      description: safeString(row.description, 'Риск найден AI при анализе ТЗ/системы. Требуется проверка.'),
+      severity: pickAllowed(row.severity, ['critical', 'high', 'medium', 'low'] as const, 'medium'),
+      category: pickAllowed(row.category, ['technical', 'product', 'process', 'business', 'security'] as const, 'product'),
+      status: 'open',
+      owner: safeString(row.owner, 'PM'),
+      identifiedAt: todayKey(),
+      targetResolutionDate: safeString(row.targetResolutionDate || row.target_resolution_date) || undefined,
+    }
+  })
+
+  const decisions: Decision[] = rawDecisions.map((item, index) => {
+    const row = asRecord(item)
+    return {
+      id: uid(),
+      date: todayKey(),
+      title: compactTitle(row.title, `AI решение ${index + 1}`),
+      status: pickAllowed(row.status, ['proposed', 'accepted', 'rejected', 'superseded', 'deprecated'] as const, 'proposed'),
+      context: safeString(row.context, source || 'AI анализ SmartBooking'),
+      decision: safeString(row.decision, 'Требуется решение PM/Tech Lead.'),
+      alternatives: safeString(row.alternatives, 'Не указано'),
+      consequences: safeString(row.consequences, 'Нужно подтвердить влияние на продукт и разработку.'),
+      tags: Array.from(new Set([...baseTags, 'decision-log', ...safeStringArray(row.tags)])),
+    }
+  })
+
+  const noteTitle = `AI ${mode.toUpperCase()}: ${source ? source.slice(0, 70) : 'SmartBooking анализ'}`
+  const notes: Note[] = [
+    {
+      id: uid(),
+      title: compactTitle(noteTitle, 'AI SmartBooking анализ'),
+      content: [`# AI результат`, source ? `**Запрос:** ${source}` : '', result].filter(Boolean).join('\n\n'),
+      pinned: true,
+      tags: ['ai', 'smartbooking', mode],
+      updatedAt: now,
+    },
+    ...rawNotes.map((item, index) => {
+      const row = asRecord(item)
+      return {
+        id: uid(),
+        title: compactTitle(row.title, `AI заметка ${index + 1}`),
+        content: safeString(row.content, result.slice(0, 1500)),
+        pinned: Boolean(row.pinned),
+        tags: Array.from(new Set([...baseTags, 'analysis', ...safeStringArray(row.tags)])),
+        updatedAt: now,
+      }
+    }),
+  ]
+
+  return { tasks, flags, decisions, notes }
+}
 
 const STATUS_LABELS: Record<Status, string> = {
   inbox: 'Inbox',
@@ -745,7 +872,7 @@ const useAppStore = create<AppState>()((set, get) => ({
   },
   importData: async (data) => {
     const user = get().currentUser
-    if (!user) return
+    if (!user) return false
     const client = getClient()
     const operations = []
     if (data.tasks?.length) operations.push(client.from('tasks').upsert(data.tasks.map((task) => taskToDb(task, user.id))))
@@ -759,10 +886,11 @@ const useAppStore = create<AppState>()((set, get) => ({
     if (error) {
       console.error(error)
       toast.error('Не удалось импортировать данные')
-      return
+      return false
     }
     await get().loadData()
     toast.success('Данные импортированы')
+    return true
   },
 }))
 
@@ -836,7 +964,7 @@ function App() {
       case 'analytics':
         return <AnalyticsPage />
       case 'ai':
-        return <AiPage />
+        return <AiPage setPage={setPage} />
       case 'settings':
         return <SettingsPage />
       default:
@@ -1642,17 +1770,21 @@ function AnalyticsPage() {
   )
 }
 
-function AiPage() {
-  const { tasks, flags, decisions, notes, retros } = useAppStore()
+function AiPage({ setPage }: { setPage: (page: Page) => void }) {
+  const { tasks, flags, decisions, notes, retros, importData } = useAppStore()
   const [provider, setProvider] = useState<AiProvider>('gemini')
   const [mode, setMode] = useState<AiMode>('spec')
   const [prompt, setPrompt] = useState('')
   const [includeRepo, setIncludeRepo] = useState(true)
+  const [autoApply, setAutoApply] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [applying, setApplying] = useState(false)
   const [result, setResult] = useState('')
   const [error, setError] = useState('')
   const [usage, setUsage] = useState<{ prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null>(null)
   const [files, setFiles] = useState<string[]>([])
+  const [actionPlan, setActionPlan] = useState<AiActionPlan | null>(null)
+  const [appliedSummary, setAppliedSummary] = useState<{ tasks: number; flags: number; decisions: number; notes: number } | null>(null)
 
   const examples: Record<AiMode, string> = {
     spec: 'Создай ТЗ SmartBooking для фичи: массовое изменение цен и доступности по room type с учетом каналов, налогов, скидок и отчетов.',
@@ -1669,6 +1801,8 @@ function AiPage() {
     setResult('')
     setUsage(null)
     setFiles([])
+    setActionPlan(null)
+    setAppliedSummary(null)
 
     try {
       const session = await getClient().auth.getSession()
@@ -1699,15 +1833,43 @@ function AiPage() {
 
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || 'AI request failed')
-      setResult(payload.result || '')
+      const textResult = payload.result || ''
+      const plan = payload.actionPlan && typeof payload.actionPlan === 'object' ? payload.actionPlan as AiActionPlan : null
+      setResult(textResult)
+      setActionPlan(plan)
       setUsage(payload.usage ?? null)
       setFiles(payload.files ?? [])
+      if (autoApply) await applyActionPlan(plan, textResult, finalPrompt)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
       setError(message)
       toast.error(message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const applyActionPlan = async (plan = actionPlan, text = result, source = prompt.trim() || examples[mode]) => {
+    if (!text.trim()) {
+      toast.error('Сначала сгенерируйте AI результат')
+      return
+    }
+
+    setApplying(true)
+    try {
+      const data = buildAiImportData(plan, text, source, mode, tasks.length)
+      const imported = await importData(data)
+      if (!imported) return
+      const summary = {
+        tasks: data.tasks.length,
+        flags: data.flags.length,
+        decisions: data.decisions.length,
+        notes: data.notes.length,
+      }
+      setAppliedSummary(summary)
+      toast.success(`AI разложил: задач ${summary.tasks}, флагов ${summary.flags}, решений ${summary.decisions}, заметок ${summary.notes}`)
+    } finally {
+      setApplying(false)
     }
   }
 
@@ -1759,12 +1921,17 @@ function AiPage() {
               <span>Изучить GitHub repo и SmartBooking docs</span>
             </label>
 
+            <label className="flex items-center gap-3 rounded-lg border border-[var(--border-accent)] bg-[var(--accent-soft)] p-3 text-[var(--text-secondary)]">
+              <input type="checkbox" checked={autoApply} onChange={(event) => setAutoApply(event.target.checked)} />
+              <span>Автоматически создать задачи, backlog, флаги, решения и заметки</span>
+            </label>
+
             <div className="rounded-lg border border-[var(--border-primary)] bg-cockpit-card p-3 text-[12px] text-[var(--text-tertiary)]">
-              Модель: {provider === 'gemini' ? '`gemini-2.5-flash` free tier' : '`llama-3.3-70b-versatile`'}. Обязательный контекст: `AI_TZ_REVIEW_INSTRUCTIONS` и `PM_SYSTEM_INPUT_SMARTBOOKING`. API key хранится только на сервере Vercel.
+              Модель: {provider === 'gemini' ? '`gemini-2.5-flash` free tier' : '`llama-3.3-70b-versatile`'}. AI возвращает документ и action plan, а система раскладывает его по страницам через Supabase.
             </div>
 
-            <button className="btn btn-primary" disabled={loading} onClick={runAi}>
-              <Sparkles size={15} /> {loading ? 'AI изучает...' : 'Сгенерировать'}
+            <button className="btn btn-primary" disabled={loading || applying} onClick={runAi}>
+              <Sparkles size={15} /> {loading ? 'AI изучает...' : applying ? 'Создаем в системе...' : 'Сгенерировать и разложить'}
             </button>
           </div>
         </section>
@@ -1794,6 +1961,33 @@ function AiPage() {
                 {files.map((file) => <span key={file}>{file}</span>)}
               </div>
             </details>
+          )}
+
+          {(actionPlan || appliedSummary) && (
+            <div className="mt-4 rounded-lg border border-[var(--border-accent)] bg-[var(--accent-soft)] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="font-semibold text-[var(--text-primary)]">AI action plan</div>
+                  <div className="mt-1 text-[12px] text-[var(--text-secondary)]">
+                    {appliedSummary ? 'Уже создано в Supabase и распределено по страницам.' : 'Готово к созданию в системе.'}
+                  </div>
+                </div>
+                {!appliedSummary && (
+                  <button className="btn btn-primary" disabled={applying} onClick={() => applyActionPlan()}>
+                    <Plus size={15} /> {applying ? 'Создаем...' : 'Создать в системе'}
+                  </button>
+                )}
+              </div>
+              {appliedSummary && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button className="btn" onClick={() => setPage('backlog')}>Backlog: {appliedSummary.tasks}</button>
+                  <button className="btn" onClick={() => setPage('inbox')}>Inbox</button>
+                  <button className="btn" onClick={() => setPage('flags')}>Флаги: {appliedSummary.flags}</button>
+                  <button className="btn" onClick={() => setPage('decisions')}>Решения: {appliedSummary.decisions}</button>
+                  <button className="btn" onClick={() => setPage('notes')}>Заметки: {appliedSummary.notes}</button>
+                </div>
+              )}
+            </div>
           )}
 
           <div className="markdown mt-5 max-w-none">

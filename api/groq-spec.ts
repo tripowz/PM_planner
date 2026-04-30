@@ -1,4 +1,4 @@
-const GROQ_BASE_URL = 'https://api.groq.com/openai/v1'
+﻿const GROQ_BASE_URL = 'https://api.groq.com/openai/v1'
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
 const DEFAULT_REPO = 'tripowz/PM_planner'
 const DEFAULT_BRANCH = 'main'
@@ -32,6 +32,11 @@ type GithubTreeItem = {
 const importantFiles = [
   'docs/AI_TZ_REVIEW_INSTRUCTIONS.md',
   'docs/PM_SYSTEM_INPUT_SMARTBOOKING.md',
+  'docs/SMARTBOOKING_SOURCE_INDEX.md',
+  'docs/SMARTBOOKING_API_ROUTES_SUMMARY.md',
+  'docs/SMARTBOOKING_DB_ENTITIES_SUMMARY.md',
+  'docs/SMARTBOOKING_FRONTEND_ROUTES_SUMMARY.md',
+  'docs/SMARTBOOKING_BOT_EVENTS_SUMMARY.md',
   'package.json',
   'README.md',
   'index.html',
@@ -71,11 +76,11 @@ function maxCharsForFile(path: string) {
 async function verifySupabaseUser(req: any) {
   const auth = String(req.headers.authorization || '')
   const token = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length) : ''
-  if (!token) throw new Error('Требуется авторизация Supabase.')
+  if (!token) throw new Error('РўСЂРµР±СѓРµС‚СЃСЏ Р°РІС‚РѕСЂРёР·Р°С†РёСЏ Supabase.')
 
   const supabaseUrl = process.env.VITE_SUPABASE_URL
   const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY
-  if (!supabaseUrl || !supabaseAnonKey) throw new Error('Supabase env не настроены на сервере.')
+  if (!supabaseUrl || !supabaseAnonKey) throw new Error('Supabase env РЅРµ РЅР°СЃС‚СЂРѕРµРЅС‹ РЅР° СЃРµСЂРІРµСЂРµ.')
 
   const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
     headers: {
@@ -83,7 +88,7 @@ async function verifySupabaseUser(req: any) {
       authorization: `Bearer ${token}`,
     },
   })
-  if (!response.ok) throw new Error('Сессия Supabase недействительна.')
+  if (!response.ok) throw new Error('РЎРµСЃСЃРёСЏ Supabase РЅРµРґРµР№СЃС‚РІРёС‚РµР»СЊРЅР°.')
   return response.json()
 }
 
@@ -110,7 +115,7 @@ async function loadRepositoryContext(repoValue?: string, branchValue?: string) {
   })
 
   if (!treeResponse.ok) {
-    throw new Error(`Не удалось прочитать GitHub repo ${owner}/${repo}:${branch}`)
+    throw new Error(`РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕС‡РёС‚Р°С‚СЊ GitHub repo ${owner}/${repo}:${branch}`)
   }
 
   const treeJson = await treeResponse.json() as { tree?: GithubTreeItem[] }
@@ -132,7 +137,7 @@ async function loadRepositoryContext(repoValue?: string, branchValue?: string) {
       chunks.push(`\n--- FILE: ${file.path} ---\n${trimmed}`)
       total += trimmed.length
     } catch (error) {
-      chunks.push(`\n--- FILE: ${file.path} ---\n[Не удалось прочитать файл: ${error instanceof Error ? error.message : 'unknown error'}]`)
+      chunks.push(`\n--- FILE: ${file.path} ---\n[РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕС‡РёС‚Р°С‚СЊ С„Р°Р№Р»: ${error instanceof Error ? error.message : 'unknown error'}]`)
     }
   }
 
@@ -146,7 +151,7 @@ async function loadRepositoryContext(repoValue?: string, branchValue?: string) {
 }
 
 function compactAppContext(context: GroqSpecRequest['appContext']) {
-  if (!context) return 'Контекст из приложения не передан.'
+  if (!context) return 'РљРѕРЅС‚РµРєСЃС‚ РёР· РїСЂРёР»РѕР¶РµРЅРёСЏ РЅРµ РїРµСЂРµРґР°РЅ.'
   return JSON.stringify({
     tasks: context.tasks?.slice(0, 80) ?? [],
     flags: context.flags?.slice(0, 40) ?? [],
@@ -157,25 +162,25 @@ function compactAppContext(context: GroqSpecRequest['appContext']) {
 }
 
 function modeInstruction(mode?: AiMode) {
-  if (mode === 'review') return 'Проверь готовое или черновое ТЗ SmartBooking как senior PM + solution architect. Не переписывай молча: сначала дай verdict, gaps, evidence, unknowns, risks, tests, затем recommended rewrite.'
-  if (mode === 'bug') return 'Диагностируй баг: вероятные причины, затронутые модули, план проверки, фиксы, acceptance criteria.'
-  if (mode === 'system') return 'Изучи систему: архитектура, доменная модель, потоки данных, риски, техдолг, следующие инженерные шаги.'
-  if (mode === 'roadmap') return 'Составь roadmap: этапы, приоритеты, зависимости, MVP scope, метрики готовности, порядок релизов.'
-  return 'Создай качественное ТЗ: цели, контекст, user stories, функциональные и нефункциональные требования, UX, данные, API, edge cases, acceptance criteria, план реализации.'
+  if (mode === 'review') return 'РџСЂРѕРІРµСЂСЊ РіРѕС‚РѕРІРѕРµ РёР»Рё С‡РµСЂРЅРѕРІРѕРµ РўР— SmartBooking РєР°Рє senior PM + solution architect. РќРµ РїРµСЂРµРїРёСЃС‹РІР°Р№ РјРѕР»С‡Р°: СЃРЅР°С‡Р°Р»Р° РґР°Р№ verdict, gaps, evidence, unknowns, risks, tests, Р·Р°С‚РµРј recommended rewrite.'
+  if (mode === 'bug') return 'Р”РёР°РіРЅРѕСЃС‚РёСЂСѓР№ Р±Р°Рі: РІРµСЂРѕСЏС‚РЅС‹Рµ РїСЂРёС‡РёРЅС‹, Р·Р°С‚СЂРѕРЅСѓС‚С‹Рµ РјРѕРґСѓР»Рё, РїР»Р°РЅ РїСЂРѕРІРµСЂРєРё, С„РёРєСЃС‹, acceptance criteria.'
+  if (mode === 'system') return 'РР·СѓС‡Рё СЃРёСЃС‚РµРјСѓ: Р°СЂС…РёС‚РµРєС‚СѓСЂР°, РґРѕРјРµРЅРЅР°СЏ РјРѕРґРµР»СЊ, РїРѕС‚РѕРєРё РґР°РЅРЅС‹С…, СЂРёСЃРєРё, С‚РµС…РґРѕР»Рі, СЃР»РµРґСѓСЋС‰РёРµ РёРЅР¶РµРЅРµСЂРЅС‹Рµ С€Р°РіРё.'
+  if (mode === 'roadmap') return 'РЎРѕСЃС‚Р°РІСЊ roadmap: СЌС‚Р°РїС‹, РїСЂРёРѕСЂРёС‚РµС‚С‹, Р·Р°РІРёСЃРёРјРѕСЃС‚Рё, MVP scope, РјРµС‚СЂРёРєРё РіРѕС‚РѕРІРЅРѕСЃС‚Рё, РїРѕСЂСЏРґРѕРє СЂРµР»РёР·РѕРІ.'
+  return 'РЎРѕР·РґР°Р№ РєР°С‡РµСЃС‚РІРµРЅРЅРѕРµ РўР—: С†РµР»Рё, РєРѕРЅС‚РµРєСЃС‚, user stories, С„СѓРЅРєС†РёРѕРЅР°Р»СЊРЅС‹Рµ Рё РЅРµС„СѓРЅРєС†РёРѕРЅР°Р»СЊРЅС‹Рµ С‚СЂРµР±РѕРІР°РЅРёСЏ, UX, РґР°РЅРЅС‹Рµ, API, edge cases, acceptance criteria, РїР»Р°РЅ СЂРµР°Р»РёР·Р°С†РёРё.'
 }
 
 function smartBookingOutputContract() {
   return [
-    'ОБЯЗАТЕЛЬНЫЙ ФОРМАТ ОТВЕТА ДЛЯ SMARTBOOKING:',
+    'РћР‘РЇР—РђРўР•Р›Р¬РќР«Р™ Р¤РћР РњРђРў РћРўР’Р•РўРђ Р”Р›РЇ SMARTBOOKING:',
     'Verdict: Ready / Not Ready',
     '',
     '1. Summary',
     '2. Impact map',
     '3. Evidence',
-    '   Таблица: Вывод/требование | Evidence status | Источник | Риск, если неверно',
-    '   Evidence status используй только из списка: Confirmed by code, Confirmed by PM, Assumption, Unknown, Needs dev confirmation, Legacy risk.',
+    '   РўР°Р±Р»РёС†Р°: Р’С‹РІРѕРґ/С‚СЂРµР±РѕРІР°РЅРёРµ | Evidence status | РСЃС‚РѕС‡РЅРёРє | Р РёСЃРє, РµСЃР»Рё РЅРµРІРµСЂРЅРѕ',
+    '   Evidence status РёСЃРїРѕР»СЊР·СѓР№ С‚РѕР»СЊРєРѕ РёР· СЃРїРёСЃРєР°: Confirmed by code, Confirmed by PM, Assumption, Unknown, Needs dev confirmation, Legacy risk.',
     '4. Unknowns & assumptions',
-    '   Таблица: ID | Type | Item | Current assumption | Risk | Owner to confirm | Status',
+    '   РўР°Р±Р»РёС†Р°: ID | Type | Item | Current assumption | Risk | Owner to confirm | Status',
     '5. Missing requirements',
     '6. Required API/data/event changes',
     '7. Required tests',
@@ -185,11 +190,69 @@ function smartBookingOutputContract() {
     '11. Recommended rewrite',
     '',
     'GUARDRAILS:',
-    '- Не пиши "система делает X", если это не подтверждено кодом, PM или документацией.',
-    '- Если доказательства нет, помечай как Assumption или Unknown.',
-    '- Если Unknown/Assumption влияет на деньги, бронирования, каналы, платежи, PII или безопасность, verdict должен быть Not Ready.',
-    '- Если impact map неполный, не принимай ТЗ как Ready.',
-    '- Обязательно проверяй permissions, state transitions, events/webhooks/RabbitMQ, audit logs, regression risks.',
+    '- РќРµ РїРёС€Рё "СЃРёСЃС‚РµРјР° РґРµР»Р°РµС‚ X", РµСЃР»Рё СЌС‚Рѕ РЅРµ РїРѕРґС‚РІРµСЂР¶РґРµРЅРѕ РєРѕРґРѕРј, PM РёР»Рё РґРѕРєСѓРјРµРЅС‚Р°С†РёРµР№.',
+    '- Р•СЃР»Рё РґРѕРєР°Р·Р°С‚РµР»СЊСЃС‚РІР° РЅРµС‚, РїРѕРјРµС‡Р°Р№ РєР°Рє Assumption РёР»Рё Unknown.',
+    '- Р•СЃР»Рё Unknown/Assumption РІР»РёСЏРµС‚ РЅР° РґРµРЅСЊРіРё, Р±СЂРѕРЅРёСЂРѕРІР°РЅРёСЏ, РєР°РЅР°Р»С‹, РїР»Р°С‚РµР¶Рё, PII РёР»Рё Р±РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ, verdict РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ Not Ready.',
+    '- Р•СЃР»Рё impact map РЅРµРїРѕР»РЅС‹Р№, РЅРµ РїСЂРёРЅРёРјР°Р№ РўР— РєР°Рє Ready.',
+    '- РћР±СЏР·Р°С‚РµР»СЊРЅРѕ РїСЂРѕРІРµСЂСЏР№ permissions, state transitions, events/webhooks/RabbitMQ, audit logs, regression risks.',
+  ].join('\n')
+}
+
+function cockpitActionPlanContract() {
+  return [
+    'РџРћРЎР›Р• РћРЎРќРћР’РќРћР“Рћ MARKDOWN-РћРўР’Р•РўРђ РћР‘РЇР—РђРўР•Р›Р¬РќРћ Р”РћР‘РђР’Р¬ РњРђРЁРРќРќР«Р™ Р‘Р›РћРљ:',
+    'PM_COCKPIT_ACTION_PLAN_JSON:',
+    '```json',
+    '{',
+    '  "tasks": [',
+    '    {',
+    '      "title": "РєРѕСЂРѕС‚РєРѕРµ РґРµР№СЃС‚РІРёРµ РґР»СЏ РєРѕРјР°РЅРґС‹",',
+    '      "description": "С‡С‚Рѕ СЃРґРµР»Р°С‚СЊ Рё РїРѕС‡РµРјСѓ",',
+    '      "project": "Angular PMS | site-generator | Mobile | Backend/API | Managed-service | Cross-product | Personal",',
+    '      "type": "feature | bug | research | ops | tech-debt | meeting | spike | docs",',
+    '      "impact": "high | medium | low",',
+    '      "effort": "XS | S | M | L | XL",',
+    '      "priority": "P0 | P1 | P2 | P3",',
+    '      "status": "inbox | backlog | week",',
+    '      "entryPoint": "РјРѕРґСѓР»СЊ/СЌРєСЂР°РЅ/API/РїСЂРѕС†РµСЃСЃ",',
+    '      "acceptanceCriteria": ["РїСЂРѕРІРµСЂСЏРµРјС‹Р№ РєСЂРёС‚РµСЂРёР№"],',
+    '      "tags": ["ai", "smartbooking"],',
+    '      "estimatedMinutes": 240',
+    '    }',
+    '  ],',
+    '  "flags": [',
+    '    {',
+    '      "title": "СЂРёСЃРє",',
+    '      "description": "РїРѕС‡РµРјСѓ РѕРїР°СЃРЅРѕ Рё С‡С‚Рѕ РїСЂРѕРІРµСЂРёС‚СЊ",',
+    '      "severity": "critical | high | medium | low",',
+    '      "category": "technical | product | process | business | security",',
+    '      "owner": "PM | Tech Lead | Backend | QA | Product"',
+    '    }',
+    '  ],',
+    '  "decisions": [',
+    '    {',
+    '      "title": "СЂРµС€РµРЅРёРµ РёР»Рё РІРѕРїСЂРѕСЃ РґР»СЏ decision log",',
+    '      "status": "proposed",',
+    '      "context": "РєРѕРЅС‚РµРєСЃС‚",',
+    '      "decision": "С‡С‚Рѕ РїСЂРµРґР»Р°РіР°РµС‚СЃСЏ СЂРµС€РёС‚СЊ",',
+    '      "alternatives": "Р°Р»СЊС‚РµСЂРЅР°С‚РёРІС‹",',
+    '      "consequences": "РїРѕСЃР»РµРґСЃС‚РІРёСЏ",',
+    '      "tags": ["ai", "decision-log"]',
+    '    }',
+    '  ],',
+    '  "notes": [',
+    '    {',
+    '      "title": "AI Р°РЅР°Р»РёР· / РўР— / bug analysis",',
+    '      "content": "РєСЂР°С‚РєР°СЏ РІС‹Р¶РёРјРєР° РґР»СЏ Notes",',
+    '      "pinned": true,',
+    '      "tags": ["ai", "analysis"]',
+    '    }',
+    '  ]',
+    '}',
+    '```',
+    '',
+    'РџСЂР°РІРёР»Р° JSON: С‚РѕР»СЊРєРѕ РІР°Р»РёРґРЅС‹Р№ JSON Р±РµР· РєРѕРјРјРµРЅС‚Р°СЂРёРµРІ; РјР°РєСЃРёРјСѓРј 18 tasks, 10 flags, 8 decisions, 4 notes.',
+    'Implementation/dev/QA work РєР»Р°РґРё РІ tasks СЃРѕ status backlog. Р’РѕРїСЂРѕСЃС‹ Рє PM Рё РЅРµРёР·РІРµСЃС‚РЅС‹Рµ, РєРѕС‚РѕСЂС‹Рµ РЅР°РґРѕ СѓС‚РѕС‡РЅРёС‚СЊ, РєР»Р°РґРё РІ tasks СЃРѕ status inbox Рё type research. РЎСЂРѕС‡РЅС‹Рµ P0/P1 РїСЂРѕРІРµСЂРєРё РјРѕР¶РЅРѕ РєР»Р°СЃС‚СЊ РІ status week.',
   ].join('\n')
 }
 
@@ -197,25 +260,40 @@ function extractGroqText(payload: any) {
   return payload?.choices?.[0]?.message?.content || ''
 }
 
+function extractActionPlan(text: string) {
+  const blockPattern = /\n*PM_COCKPIT_ACTION_PLAN_JSON:\s*```(?:json)?\s*([\s\S]*?)\s*```/i
+  const match = text.match(blockPattern)
+  if (!match) return { result: text.trim(), actionPlan: null }
+
+  try {
+    return {
+      result: text.replace(match[0], '').trim(),
+      actionPlan: JSON.parse(match[1]),
+    }
+  } catch {
+    return { result: text.trim(), actionPlan: null }
+  }
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' })
-  if (!process.env.GROQ_API_KEY) return json(res, 500, { error: 'GROQ_API_KEY не задан в Vercel Environment Variables.' })
+  if (!process.env.GROQ_API_KEY) return json(res, 500, { error: 'GROQ_API_KEY РЅРµ Р·Р°РґР°РЅ РІ Vercel Environment Variables.' })
 
   let body: GroqSpecRequest
   try {
     body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body
   } catch {
-    return json(res, 400, { error: 'Некорректный JSON body.' })
+    return json(res, 400, { error: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ JSON body.' })
   }
 
   const prompt = body.prompt?.trim()
-  if (!prompt) return json(res, 400, { error: 'Опишите, что нужно изучить или какое ТЗ создать.' })
+  if (!prompt) return json(res, 400, { error: 'РћРїРёС€РёС‚Рµ, С‡С‚Рѕ РЅСѓР¶РЅРѕ РёР·СѓС‡РёС‚СЊ РёР»Рё РєР°РєРѕРµ РўР— СЃРѕР·РґР°С‚СЊ.' })
 
   try {
     await verifySupabaseUser(req)
 
     const repoContext = body.includeRepo === false
-      ? { repo: body.repo || DEFAULT_REPO, branch: body.branch || DEFAULT_BRANCH, chars: 0, files: [] as string[], context: 'Repo context отключен пользователем.' }
+      ? { repo: body.repo || DEFAULT_REPO, branch: body.branch || DEFAULT_BRANCH, chars: 0, files: [] as string[], context: 'Repo context РѕС‚РєР»СЋС‡РµРЅ РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј.' }
       : await loadRepositoryContext(body.repo, body.branch)
 
     const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
@@ -233,22 +311,23 @@ export default async function handler(req: any, res: any) {
           {
             role: 'system',
             content: [
-              'Ты senior product analyst и solution architect для SmartBooking PM-системы.',
-              'Отвечай на русском языке, структурно и практически.',
-              'Не выдумывай факты о коде. Если данных не хватает, помечай это как предположение.',
-              'Документы должны быть пригодны для передачи разработчику: конкретные требования, acceptance criteria, риски и план реализации.',
-              'Источник истины для SmartBooking: docs/AI_TZ_REVIEW_INSTRUCTIONS.md и docs/PM_SYSTEM_INPUT_SMARTBOOKING.md из контекста репозитория.',
+              'РўС‹ senior product analyst Рё solution architect РґР»СЏ SmartBooking PM-СЃРёСЃС‚РµРјС‹.',
+              'РћС‚РІРµС‡Р°Р№ РЅР° СЂСѓСЃСЃРєРѕРј СЏР·С‹РєРµ, СЃС‚СЂСѓРєС‚СѓСЂРЅРѕ Рё РїСЂР°РєС‚РёС‡РµСЃРєРё.',
+              'РќРµ РІС‹РґСѓРјС‹РІР°Р№ С„Р°РєС‚С‹ Рѕ РєРѕРґРµ. Р•СЃР»Рё РґР°РЅРЅС‹С… РЅРµ С…РІР°С‚Р°РµС‚, РїРѕРјРµС‡Р°Р№ СЌС‚Рѕ РєР°Рє РїСЂРµРґРїРѕР»РѕР¶РµРЅРёРµ.',
+              'Р”РѕРєСѓРјРµРЅС‚С‹ РґРѕР»Р¶РЅС‹ Р±С‹С‚СЊ РїСЂРёРіРѕРґРЅС‹ РґР»СЏ РїРµСЂРµРґР°С‡Рё СЂР°Р·СЂР°Р±РѕС‚С‡РёРєСѓ: РєРѕРЅРєСЂРµС‚РЅС‹Рµ С‚СЂРµР±РѕРІР°РЅРёСЏ, acceptance criteria, СЂРёСЃРєРё Рё РїР»Р°РЅ СЂРµР°Р»РёР·Р°С†РёРё.',
+              'РСЃС‚РѕС‡РЅРёРє РёСЃС‚РёРЅС‹ РґР»СЏ SmartBooking: docs/AI_TZ_REVIEW_INSTRUCTIONS.md Рё docs/PM_SYSTEM_INPUT_SMARTBOOKING.md РёР· РєРѕРЅС‚РµРєСЃС‚Р° СЂРµРїРѕР·РёС‚РѕСЂРёСЏ.',
             ].join('\n'),
           },
           {
             role: 'user',
             content: [
-              `Режим: ${body.mode || 'spec'}.`,
+              `Р РµР¶РёРј: ${body.mode || 'spec'}.`,
               modeInstruction(body.mode),
               smartBookingOutputContract(),
-              `\nЗапрос пользователя:\n${prompt}`,
-              `\nКонтекст приложения из Supabase:\n${compactAppContext(body.appContext)}`,
-              `\nКонтекст репозитория ${repoContext.repo}:${repoContext.branch} (${repoContext.files.length} файлов, ${repoContext.chars} символов):\n${repoContext.context}`,
+              cockpitActionPlanContract(),
+              `\nР—Р°РїСЂРѕСЃ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ:\n${prompt}`,
+              `\nРљРѕРЅС‚РµРєСЃС‚ РїСЂРёР»РѕР¶РµРЅРёСЏ РёР· Supabase:\n${compactAppContext(body.appContext)}`,
+              `\nРљРѕРЅС‚РµРєСЃС‚ СЂРµРїРѕР·РёС‚РѕСЂРёСЏ ${repoContext.repo}:${repoContext.branch} (${repoContext.files.length} С„Р°Р№Р»РѕРІ, ${repoContext.chars} СЃРёРјРІРѕР»РѕРІ):\n${repoContext.context}`,
             ].join('\n\n'),
           },
         ],
@@ -260,12 +339,16 @@ export default async function handler(req: any, res: any) {
       return json(res, response.status, { error: payload?.error?.message || 'Groq request failed' })
     }
 
+    const textResult = extractGroqText(payload)
+    const extracted = extractActionPlan(textResult)
+
     return json(res, 200, {
       model: GROQ_MODEL,
       repo: repoContext.repo,
       branch: repoContext.branch,
       files: repoContext.files,
-      result: extractGroqText(payload),
+      result: extracted.result,
+      actionPlan: extracted.actionPlan,
       usage: payload.usage,
     })
   } catch (error) {
@@ -273,3 +356,4 @@ export default async function handler(req: any, res: any) {
     return json(res, 500, { error: error instanceof Error ? error.message : 'Groq request failed' })
   }
 }
+
