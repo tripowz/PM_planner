@@ -1,10 +1,18 @@
-﻿# AI TЗ Review Instructions
+﻿# AI TZ Review Instructions
 
 Before creating or reviewing any SmartBooking product requirements, read:
 
-- `docs/PM_SYSTEM_INPUT_SMARTBOOKING.md`
+1. docs/PM_SYSTEM_INPUT_SMARTBOOKING.md
+2. docs/SMARTBOOKING_SOURCE_INDEX.md
 
-Use it as the source of truth for:
+Then read the relevant summary files:
+
+- docs/SMARTBOOKING_API_ROUTES_SUMMARY.md
+- docs/SMARTBOOKING_DB_ENTITIES_SUMMARY.md
+- docs/SMARTBOOKING_FRONTEND_ROUTES_SUMMARY.md
+- docs/SMARTBOOKING_BOT_EVENTS_SUMMARY.md
+
+Use these files as the source of truth for:
 
 - product modules and repository boundaries;
 - impact analysis;
@@ -17,11 +25,13 @@ Use it as the source of truth for:
 
 For every feature spec, return:
 
-- `Verdict: Ready / Not Ready`
-- `Impact map`
-- `Evidence`
-- `Unknowns & assumptions`
-- `Missing requirements`
-- `Required API/data/event changes`
-- `Required tests`
-- `Release risks`
+- Verdict: Ready / Not Ready
+- Impact map
+- Evidence
+- Unknowns & assumptions
+- Missing requirements
+- Required API/data/event changes
+- Required tests
+- Release risks
+
+If exact behavior is not confirmed by these docs, mark it as Unknown or inspect the source path listed in SMARTBOOKING_SOURCE_INDEX.md.
