@@ -3,7 +3,7 @@ const DEFAULT_REPO = 'tripowz/PM_planner'
 const DEFAULT_BRANCH = 'main'
 const MAX_FILE_CHARS = 28_000
 const MAX_DOC_FILE_CHARS = 95_000
-const MAX_REPO_CHARS = 240_000
+const MAX_REPO_CHARS = 360_000
 
 type AiMode = 'spec' | 'review' | 'bug' | 'system' | 'roadmap'
 
@@ -72,6 +72,14 @@ function maxCharsForFile(path: string) {
   return path.startsWith('docs/') ? MAX_DOC_FILE_CHARS : MAX_FILE_CHARS
 }
 
+function fileRank(path: string) {
+  const importantIndex = importantFiles.indexOf(path)
+  if (importantIndex >= 0) return importantIndex
+  if (path.startsWith('docs/')) return 100
+  if (path.startsWith('supabase/migrations/')) return 200
+  return 300
+}
+
 async function verifySupabaseUser(req: any) {
   const auth = String(req.headers.authorization || '')
   const token = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length) : ''
@@ -120,7 +128,7 @@ async function loadRepositoryContext(repoValue?: string, branchValue?: string) {
   const treeJson = await treeResponse.json() as { tree?: GithubTreeItem[] }
   const files = (treeJson.tree ?? [])
     .filter((item) => item.type === 'blob' && shouldIncludeFile(item.path))
-    .sort((a, b) => importantFiles.indexOf(b.path) - importantFiles.indexOf(a.path))
+    .sort((a, b) => fileRank(a.path) - fileRank(b.path) || a.path.localeCompare(b.path))
 
   let total = 0
   const chunks: string[] = []
@@ -197,6 +205,62 @@ function smartBookingOutputContract() {
   ].join('\n')
 }
 
+function specOutputContract() {
+  return [
+    'FULL SPEC MODE CONTRACT:',
+    'The main markdown answer must be a complete detailed Russian TZ/PRD for implementation, not a short summary.',
+    'Use SmartBooking docs as the source of truth and explicitly mention affected modules, roles, entities, screens, API/routes, events, permissions, audit logs, reports, and integrations when they are relevant.',
+    '',
+    'Required sections:',
+    '1. Название фичи',
+    '2. Executive summary',
+    '3. Цели и бизнес-ценность',
+    '4. Контекст из SmartBooking docs',
+    '5. Problem statement',
+    '6. In scope',
+    '7. Out of scope',
+    '8. Пользователи, роли и permissions',
+    '9. User stories',
+    '10. Functional requirements numbered FR-001, FR-002, ...',
+    '11. UX/UI requirements and affected screens',
+    '12. Data model, DB entities, migrations, indexes, backfill if needed',
+    '13. API/backend contracts, request/response, errors',
+    '14. Events, webhooks, RabbitMQ, notifications, audit logs',
+    '15. State transitions and lifecycle',
+    '16. Validation rules and edge cases',
+    '17. Security, PII, permissions, audit',
+    '18. Reporting, analytics, exports',
+    '19. Non-functional requirements',
+    '20. Acceptance criteria',
+    '21. Test plan: unit, integration, e2e, regression',
+    '22. Release plan, rollout, rollback',
+    '23. Risks and mitigations',
+    '24. Unknowns and questions to PM/dev',
+    '25. Implementation plan by backlog tasks',
+    '',
+    'Evidence rules:',
+    '- For important requirements include Evidence status: Confirmed by docs, Confirmed by code, Assumption, Unknown, Needs dev confirmation, Legacy risk.',
+    '- If there is no support in docs/code, mark it as Assumption or Unknown.',
+    '- If Unknown/Assumption affects money, bookings, channels, payments, PII, or security, mark it as a blocker.',
+    '- Do not replace the TZ with a generic checklist. The user needs a developer-ready specification.',
+  ].join('\n')
+}
+
+function outputContract(mode?: AiMode) {
+  if (mode === 'spec') return specOutputContract()
+  return smartBookingOutputContract()
+}
+
+function strictSpecInstruction(mode?: AiMode) {
+  if (mode !== 'spec') return ''
+  return [
+    'STRICT SPEC REQUIREMENT:',
+    'You must study the repository docs and produce the full TZ/PRD in markdown before the JSON block.',
+    'The answer should be detailed enough that backend, frontend, QA, and PM can create implementation tickets from it without asking for a rewrite.',
+    'Do not answer with "нужно уточнить" only. If there are unknowns, still write the best possible spec and mark blockers explicitly.',
+  ].join('\n')
+}
+
 function cockpitActionPlanContract() {
   return [
     'РџРћРЎР›Р• РћРЎРќРћР’РќРћР“Рћ MARKDOWN-РћРўР’Р•РўРђ РћР‘РЇР—РђРўР•Р›Р¬РќРћ Р”РћР‘РђР’Р¬ РњРђРЁРРќРќР«Р™ Р‘Р›РћРљ:',
@@ -255,6 +319,62 @@ function cockpitActionPlanContract() {
   ].join('\n')
 }
 
+function cleanActionPlanContract() {
+  return [
+    'After the full markdown TZ/analysis, add exactly one machine-readable block:',
+    'PM_COCKPIT_ACTION_PLAN_JSON:',
+    '```json',
+    '{',
+    '  "tasks": [',
+    '    {',
+    '      "title": "short team action",',
+    '      "description": "what to do and why",',
+    '      "project": "Angular PMS | site-generator | Mobile | Backend/API | Managed-service | Cross-product | Personal",',
+    '      "type": "feature | bug | research | ops | tech-debt | meeting | spike | docs",',
+    '      "impact": "high | medium | low",',
+    '      "effort": "XS | S | M | L | XL",',
+    '      "priority": "P0 | P1 | P2 | P3",',
+    '      "status": "inbox | backlog | week",',
+    '      "entryPoint": "module/screen/API/process",',
+    '      "acceptanceCriteria": ["testable criterion"],',
+    '      "tags": ["ai", "smartbooking"],',
+    '      "estimatedMinutes": 240',
+    '    }',
+    '  ],',
+    '  "flags": [',
+    '    {',
+    '      "title": "risk",',
+    '      "description": "why it is risky and what to verify",',
+    '      "severity": "critical | high | medium | low",',
+    '      "category": "technical | product | process | business | security",',
+    '      "owner": "PM | Tech Lead | Backend | QA | Product"',
+    '    }',
+    '  ],',
+    '  "decisions": [',
+    '    {',
+    '      "title": "decision log item",',
+    '      "status": "proposed",',
+    '      "context": "context",',
+    '      "decision": "decision to make",',
+    '      "alternatives": "alternatives",',
+    '      "consequences": "consequences",',
+    '      "tags": ["ai", "decision-log"]',
+    '    }',
+    '  ],',
+    '  "notes": [',
+    '    {',
+    '      "title": "AI analysis / TZ / bug analysis",',
+    '      "content": "short note summary",',
+    '      "pinned": true,',
+    '      "tags": ["ai", "analysis"]',
+    '    }',
+    '  ]',
+    '}',
+    '```',
+    'JSON rules: valid JSON only, no comments, max 18 tasks, 10 flags, 8 decisions, 4 notes.',
+  ].join('\n')
+}
+
 function extractGeminiText(payload: any) {
   return (payload?.candidates?.[0]?.content?.parts ?? [])
     .map((part: any) => part?.text || '')
@@ -310,8 +430,9 @@ export default async function handler(req: any, res: any) {
     const userContent = [
       `Р РµР¶РёРј: ${body.mode || 'spec'}.`,
       modeInstruction(body.mode),
-      smartBookingOutputContract(),
-      cockpitActionPlanContract(),
+      strictSpecInstruction(body.mode || 'spec'),
+      outputContract(body.mode || 'spec'),
+      cleanActionPlanContract(),
       `\nР—Р°РїСЂРѕСЃ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ:\n${prompt}`,
       `\nРљРѕРЅС‚РµРєСЃС‚ РїСЂРёР»РѕР¶РµРЅРёСЏ РёР· Supabase:\n${compactAppContext(body.appContext)}`,
       `\nРљРѕРЅС‚РµРєСЃС‚ СЂРµРїРѕР·РёС‚РѕСЂРёСЏ ${repoContext.repo}:${repoContext.branch} (${repoContext.files.length} С„Р°Р№Р»РѕРІ, ${repoContext.chars} СЃРёРјРІРѕР»РѕРІ):\n${repoContext.context}`,
@@ -326,6 +447,8 @@ export default async function handler(req: any, res: any) {
         systemInstruction: {
           parts: [{
             text: [
+              'In spec mode, write a full detailed Russian TZ/PRD first. Do not answer with a short summary or generic checklist.',
+              'Use all docs/* files in the repository context before writing the spec. The JSON action plan must be only at the very end.',
               'РўС‹ senior product analyst Рё solution architect РґР»СЏ SmartBooking PM-СЃРёСЃС‚РµРјС‹.',
               'РћС‚РІРµС‡Р°Р№ РЅР° СЂСѓСЃСЃРєРѕРј СЏР·С‹РєРµ, СЃС‚СЂСѓРєС‚СѓСЂРЅРѕ Рё РїСЂР°РєС‚РёС‡РµСЃРєРё.',
               'РќРµ РІС‹РґСѓРјС‹РІР°Р№ С„Р°РєС‚С‹ Рѕ РєРѕРґРµ. Р•СЃР»Рё РґР°РЅРЅС‹С… РЅРµ С…РІР°С‚Р°РµС‚, РїРѕРјРµС‡Р°Р№ СЌС‚Рѕ РєР°Рє РїСЂРµРґРїРѕР»РѕР¶РµРЅРёРµ.',
@@ -341,7 +464,7 @@ export default async function handler(req: any, res: any) {
         generationConfig: {
           temperature: 0.35,
           topP: 0.9,
-          maxOutputTokens: 12000,
+          maxOutputTokens: 20000,
         },
       }),
     })
