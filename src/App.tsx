@@ -73,6 +73,7 @@ type Page =
   | 'templates'
   | 'notes'
   | 'analytics'
+  | 'ai'
   | 'settings'
 
 type Project = 'Angular PMS' | 'site-generator' | 'Mobile' | 'Backend/API' | 'Managed-service' | 'Cross-product' | 'Personal'
@@ -159,6 +160,8 @@ type Template = {
   content: string
   usageCount: number
 }
+
+type AiMode = 'spec' | 'bug' | 'system' | 'roadmap'
 
 type PomodoroState = {
   running: boolean
@@ -804,6 +807,7 @@ function App() {
   useHotkeys('g d', () => setPage('decisions'), { enableOnFormTags: false })
   useHotkeys('g f', () => setPage('flags'), { enableOnFormTags: false })
   useHotkeys('g a', () => setPage('analytics'), { enableOnFormTags: false })
+  useHotkeys('g x', () => setPage('ai'), { enableOnFormTags: false })
   useHotkeys('g s', () => setPage('settings'), { enableOnFormTags: false })
 
   const renderPage = () => {
@@ -830,6 +834,8 @@ function App() {
         return <NotesPage />
       case 'analytics':
         return <AnalyticsPage />
+      case 'ai':
+        return <AiPage />
       case 'settings':
         return <SettingsPage />
       default:
@@ -976,6 +982,7 @@ function Sidebar({ page, setPage }: { page: Page; setPage: (page: Page) => void 
     { id: 'templates', label: 'Шаблоны', icon: FileText },
     { id: 'notes', label: 'Заметки', icon: NotebookPen },
     { id: 'analytics', label: 'Аналитика', icon: BarChart3 },
+    { id: 'ai', label: 'AI / ТЗ', icon: Sparkles },
     { id: 'settings', label: 'Настройки', icon: Settings },
   ]
   return (
@@ -1018,6 +1025,7 @@ function TopBar({ page, setPage, onCreate, onPalette, onTheme }: { page: Page; s
     { id: 'today', label: 'Today' },
     { id: 'board', label: 'Board' },
     { id: 'inbox', label: 'Inbox' },
+    { id: 'ai', label: 'AI' },
     { id: 'analytics', label: 'Аналитика' },
   ]
   return (
@@ -1075,6 +1083,7 @@ function pageTitle(page: Page) {
     templates: 'Шаблоны',
     notes: 'Заметки',
     analytics: 'Аналитика',
+    ai: 'AI / ТЗ',
     settings: 'Настройки',
   }
   return titles[page]
@@ -1632,6 +1641,160 @@ function AnalyticsPage() {
   )
 }
 
+function AiPage() {
+  const { tasks, flags, decisions, notes, retros } = useAppStore()
+  const [mode, setMode] = useState<AiMode>('spec')
+  const [prompt, setPrompt] = useState('')
+  const [includeRepo, setIncludeRepo] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState('')
+  const [error, setError] = useState('')
+  const [usage, setUsage] = useState<{ prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null>(null)
+  const [files, setFiles] = useState<string[]>([])
+
+  const examples: Record<AiMode, string> = {
+    spec: 'Изучи текущую систему и подготовь ТЗ для AI-модуля, который помогает PM создавать задачи, находить риски и планировать день.',
+    bug: 'Изучи код и опиши, почему сохранение задач может ломаться. Дай план диагностики и acceptance criteria для фикса.',
+    system: 'Изучи архитектуру PM Cockpit: frontend, Supabase, Vercel, данные. Опиши как система работает и где слабые места.',
+    roadmap: 'Составь roadmap на 4 недели: что улучшать в PM Cockpit, какие функции делать первыми, какие риски и зависимости.',
+  }
+
+  const runAi = async () => {
+    const finalPrompt = prompt.trim() || examples[mode]
+    setLoading(true)
+    setError('')
+    setResult('')
+    setUsage(null)
+    setFiles([])
+
+    try {
+      const session = await getClient().auth.getSession()
+      const token = session.data.session?.access_token
+      if (!token) throw new Error('Войдите в аккаунт перед запуском AI.')
+
+      const response = await fetch('/api/groq-spec', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode,
+          prompt: finalPrompt,
+          includeRepo,
+          repo: 'tripowz/PM_planner',
+          branch: 'main',
+          appContext: {
+            tasks: tasks.slice(0, 60),
+            flags: flags.slice(0, 30),
+            decisions: decisions.slice(0, 30),
+            notes: notes.slice(0, 20),
+            retros: retros.slice(0, 15),
+          },
+        }),
+      })
+
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || 'AI request failed')
+      setResult(payload.result || '')
+      setUsage(payload.usage ?? null)
+      setFiles(payload.files ?? [])
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const estimatedCost = usage ? ((usage.prompt_tokens ?? 0) / 1_000_000 * 0.59) + ((usage.completion_tokens ?? 0) / 1_000_000 * 0.79) : 0
+
+  return (
+    <PageShell wide>
+      <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+        <section className="card p-5">
+          <div className="flex items-start gap-3">
+            <div className="grid h-11 w-11 place-items-center rounded-lg border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
+              <Sparkles size={18} />
+            </div>
+            <SectionHeader title="Groq AI" subtitle="ТЗ, баг-анализ и изучение системы по репозиторию" />
+          </div>
+
+          <div className="mt-5 grid gap-4">
+            <label>
+              <span className="mb-1 block text-[10px] uppercase text-[var(--text-tertiary)]">Режим</span>
+              <select className="input" value={mode} onChange={(event) => setMode(event.target.value as AiMode)}>
+                <option value="spec">Создать ТЗ</option>
+                <option value="bug">Изучить баг</option>
+                <option value="system">Изучить систему</option>
+                <option value="roadmap">Roadmap</option>
+              </select>
+            </label>
+
+            <label>
+              <span className="mb-1 block text-[10px] uppercase text-[var(--text-tertiary)]">Что нужно сделать</span>
+              <textarea
+                className="input min-h-44"
+                value={prompt}
+                placeholder={examples[mode]}
+                onChange={(event) => setPrompt(event.target.value)}
+              />
+            </label>
+
+            <label className="flex items-center gap-3 rounded-lg border border-[var(--border-primary)] bg-cockpit-card p-3 text-[var(--text-secondary)]">
+              <input type="checkbox" checked={includeRepo} onChange={(event) => setIncludeRepo(event.target.checked)} />
+              <span>Изучить GitHub repo `tripowz/PM_planner`</span>
+            </label>
+
+            <div className="rounded-lg border border-[var(--border-primary)] bg-cockpit-card p-3 text-[12px] text-[var(--text-tertiary)]">
+              Модель: `llama-3.3-70b-versatile`. Ключ Groq хранится только на сервере Vercel как `GROQ_API_KEY`.
+            </div>
+
+            <button className="btn btn-primary" disabled={loading} onClick={runAi}>
+              <Sparkles size={15} /> {loading ? 'AI изучает...' : 'Сгенерировать'}
+            </button>
+          </div>
+        </section>
+
+        <section className="card min-h-[620px] p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <SectionHeader title="Результат" subtitle="Готовый документ можно переносить в задачи или заметки" />
+            {usage && (
+              <div className="flex flex-wrap gap-2">
+                <span className="badge">Input: {usage.prompt_tokens ?? 0}</span>
+                <span className="badge">Output: {usage.completion_tokens ?? 0}</span>
+                <span className="badge">~${estimatedCost.toFixed(4)}</span>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className="mt-4 rounded-lg border border-[var(--danger)] bg-cockpit-bg p-4 text-[var(--danger)]">
+              {error}
+            </div>
+          )}
+
+          {files.length > 0 && (
+            <details className="mt-4 rounded-lg border border-[var(--border-primary)] bg-cockpit-bg p-3 text-[12px] text-[var(--text-tertiary)]">
+              <summary className="cursor-pointer font-semibold text-[var(--text-secondary)]">Изученные файлы: {files.length}</summary>
+              <div className="mt-3 grid gap-1">
+                {files.map((file) => <span key={file}>{file}</span>)}
+              </div>
+            </details>
+          )}
+
+          <div className="markdown mt-5 max-w-none">
+            {loading && <EmptyState title="AI работает" text="Большой анализ репозитория может занять больше времени, чем обычный чат." />}
+            {!loading && !result && !error && <EmptyState title="Пока нет результата" text="Опишите задачу или используйте пример по выбранному режиму." />}
+            {result && <ReactMarkdown remarkPlugins={[remarkGfm]}>{result}</ReactMarkdown>}
+          </div>
+        </section>
+      </div>
+    </PageShell>
+  )
+}
+
 function SettingsPage() {
   const store = useAppStore()
   const fileRef = useRef<HTMLInputElement | null>(null)
@@ -1807,7 +1970,7 @@ function CommandPalette({ open, setOpen, setPage, openTask }: { open: boolean; s
   }, [open])
   if (!open) return null
   const nav: Array<{ label: string; page: Page }> = [
-    { label: 'Today', page: 'today' }, { label: 'Board', page: 'board' }, { label: 'Inbox', page: 'inbox' }, { label: 'Backlog', page: 'backlog' }, { label: 'Analytics', page: 'analytics' },
+    { label: 'Today', page: 'today' }, { label: 'Board', page: 'board' }, { label: 'Inbox', page: 'inbox' }, { label: 'Backlog', page: 'backlog' }, { label: 'AI / ТЗ', page: 'ai' }, { label: 'Analytics', page: 'analytics' },
   ]
   const q = query.toLowerCase()
   const results = [
@@ -1858,7 +2021,7 @@ function DecisionModal({ decision, onClose, onSave }: { decision: Decision; onCl
 function HotkeysModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   if (!open) return null
   const rows = [
-    ['Cmd/Ctrl+K', 'Command palette'], ['C', 'Создать задачу'], ['N', 'Новая заметка'], ['G T', 'Today'], ['G B', 'Board'], ['G I', 'Inbox'], ['G L', 'Backlog'], ['G A', 'Analytics'], ['P', 'Pomodoro'], ['?', 'Хоткеи'],
+    ['Cmd/Ctrl+K', 'Command palette'], ['C', 'Создать задачу'], ['N', 'Новая заметка'], ['G T', 'Today'], ['G B', 'Board'], ['G I', 'Inbox'], ['G L', 'Backlog'], ['G X', 'AI / ТЗ'], ['G A', 'Analytics'], ['P', 'Pomodoro'], ['?', 'Хоткеи'],
   ]
   return (
     <Modal onClose={onClose} title="Горячие клавиши" narrow>
