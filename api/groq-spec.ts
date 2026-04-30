@@ -2,10 +2,11 @@ const GROQ_BASE_URL = 'https://api.groq.com/openai/v1'
 const GROQ_MODEL = 'llama-3.3-70b-versatile'
 const DEFAULT_REPO = 'tripowz/PM_planner'
 const DEFAULT_BRANCH = 'main'
-const MAX_FILE_CHARS = 22_000
-const MAX_REPO_CHARS = 150_000
+const MAX_FILE_CHARS = 28_000
+const MAX_DOC_FILE_CHARS = 95_000
+const MAX_REPO_CHARS = 240_000
 
-type AiMode = 'spec' | 'bug' | 'system' | 'roadmap'
+type AiMode = 'spec' | 'review' | 'bug' | 'system' | 'roadmap'
 
 type GroqSpecRequest = {
   mode?: AiMode
@@ -29,6 +30,8 @@ type GithubTreeItem = {
 }
 
 const importantFiles = [
+  'docs/AI_TZ_REVIEW_INSTRUCTIONS.md',
+  'docs/PM_SYSTEM_INPUT_SMARTBOOKING.md',
   'package.json',
   'README.md',
   'index.html',
@@ -59,6 +62,10 @@ function shouldIncludeFile(path: string) {
   if (path.startsWith('supabase/migrations/') && path.endsWith('.sql')) return true
   if (path.startsWith('docs/') && /\.(md|txt)$/.test(path)) return true
   return false
+}
+
+function maxCharsForFile(path: string) {
+  return path.startsWith('docs/') ? MAX_DOC_FILE_CHARS : MAX_FILE_CHARS
 }
 
 async function verifySupabaseUser(req: any) {
@@ -121,7 +128,7 @@ async function loadRepositoryContext(repoValue?: string, branchValue?: string) {
     try {
       const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${file.path}`
       const content = await fetchText(rawUrl)
-      const trimmed = content.slice(0, Math.min(MAX_FILE_CHARS, MAX_REPO_CHARS - total))
+      const trimmed = content.slice(0, Math.min(maxCharsForFile(file.path), MAX_REPO_CHARS - total))
       chunks.push(`\n--- FILE: ${file.path} ---\n${trimmed}`)
       total += trimmed.length
     } catch (error) {
@@ -150,10 +157,40 @@ function compactAppContext(context: GroqSpecRequest['appContext']) {
 }
 
 function modeInstruction(mode?: AiMode) {
+  if (mode === 'review') return 'Проверь готовое или черновое ТЗ SmartBooking как senior PM + solution architect. Не переписывай молча: сначала дай verdict, gaps, evidence, unknowns, risks, tests, затем recommended rewrite.'
   if (mode === 'bug') return 'Диагностируй баг: вероятные причины, затронутые модули, план проверки, фиксы, acceptance criteria.'
   if (mode === 'system') return 'Изучи систему: архитектура, доменная модель, потоки данных, риски, техдолг, следующие инженерные шаги.'
   if (mode === 'roadmap') return 'Составь roadmap: этапы, приоритеты, зависимости, MVP scope, метрики готовности, порядок релизов.'
   return 'Создай качественное ТЗ: цели, контекст, user stories, функциональные и нефункциональные требования, UX, данные, API, edge cases, acceptance criteria, план реализации.'
+}
+
+function smartBookingOutputContract() {
+  return [
+    'ОБЯЗАТЕЛЬНЫЙ ФОРМАТ ОТВЕТА ДЛЯ SMARTBOOKING:',
+    'Verdict: Ready / Not Ready',
+    '',
+    '1. Summary',
+    '2. Impact map',
+    '3. Evidence',
+    '   Таблица: Вывод/требование | Evidence status | Источник | Риск, если неверно',
+    '   Evidence status используй только из списка: Confirmed by code, Confirmed by PM, Assumption, Unknown, Needs dev confirmation, Legacy risk.',
+    '4. Unknowns & assumptions',
+    '   Таблица: ID | Type | Item | Current assumption | Risk | Owner to confirm | Status',
+    '5. Missing requirements',
+    '6. Required API/data/event changes',
+    '7. Required tests',
+    '8. Release risks',
+    '9. Questions to PM',
+    '10. Decision Log entries to add',
+    '11. Recommended rewrite',
+    '',
+    'GUARDRAILS:',
+    '- Не пиши "система делает X", если это не подтверждено кодом, PM или документацией.',
+    '- Если доказательства нет, помечай как Assumption или Unknown.',
+    '- Если Unknown/Assumption влияет на деньги, бронирования, каналы, платежи, PII или безопасность, verdict должен быть Not Ready.',
+    '- Если impact map неполный, не принимай ТЗ как Ready.',
+    '- Обязательно проверяй permissions, state transitions, events/webhooks/RabbitMQ, audit logs, regression risks.',
+  ].join('\n')
 }
 
 function extractGroqText(payload: any) {
@@ -196,10 +233,11 @@ export default async function handler(req: any, res: any) {
           {
             role: 'system',
             content: [
-              'Ты senior product analyst и software architect для PM Cockpit.',
+              'Ты senior product analyst и solution architect для SmartBooking PM-системы.',
               'Отвечай на русском языке, структурно и практически.',
               'Не выдумывай факты о коде. Если данных не хватает, помечай это как предположение.',
               'Документы должны быть пригодны для передачи разработчику: конкретные требования, acceptance criteria, риски и план реализации.',
+              'Источник истины для SmartBooking: docs/AI_TZ_REVIEW_INSTRUCTIONS.md и docs/PM_SYSTEM_INPUT_SMARTBOOKING.md из контекста репозитория.',
             ].join('\n'),
           },
           {
@@ -207,6 +245,7 @@ export default async function handler(req: any, res: any) {
             content: [
               `Режим: ${body.mode || 'spec'}.`,
               modeInstruction(body.mode),
+              smartBookingOutputContract(),
               `\nЗапрос пользователя:\n${prompt}`,
               `\nКонтекст приложения из Supabase:\n${compactAppContext(body.appContext)}`,
               `\nКонтекст репозитория ${repoContext.repo}:${repoContext.branch} (${repoContext.files.length} файлов, ${repoContext.chars} символов):\n${repoContext.context}`,

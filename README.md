@@ -28,3 +28,12 @@ npm run dev
 ```bash
 npm run build
 ```
+
+## AI / PM spec context
+
+For SmartBooking feature specs and AI review, use:
+
+- `docs/PM_SYSTEM_INPUT_SMARTBOOKING.md`
+- `docs/AI_TZ_REVIEW_INSTRUCTIONS.md`
+
+These files define impact analysis, permissions, data contracts, events, edge cases, release risks, evidence requirements, unknowns/assumptions, and decision logs.

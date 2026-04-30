@@ -161,7 +161,7 @@ type Template = {
   usageCount: number
 }
 
-type AiMode = 'spec' | 'bug' | 'system' | 'roadmap'
+type AiMode = 'spec' | 'review' | 'bug' | 'system' | 'roadmap'
 
 type PomodoroState = {
   running: boolean
@@ -1653,10 +1653,11 @@ function AiPage() {
   const [files, setFiles] = useState<string[]>([])
 
   const examples: Record<AiMode, string> = {
-    spec: 'Изучи текущую систему и подготовь ТЗ для AI-модуля, который помогает PM создавать задачи, находить риски и планировать день.',
-    bug: 'Изучи код и опиши, почему сохранение задач может ломаться. Дай план диагностики и acceptance criteria для фикса.',
-    system: 'Изучи архитектуру PM Cockpit: frontend, Supabase, Vercel, данные. Опиши как система работает и где слабые места.',
-    roadmap: 'Составь roadmap на 4 недели: что улучшать в PM Cockpit, какие функции делать первыми, какие риски и зависимости.',
+    spec: 'Создай ТЗ SmartBooking для фичи: массовое изменение цен и доступности по room type с учетом каналов, налогов, скидок и отчетов.',
+    review: 'Проверь это ТЗ SmartBooking на готовность к разработке: вставьте сюда черновик ТЗ или описание фичи.',
+    bug: 'Изучи возможный баг SmartBooking: OTA прислал изменение брони после ручного изменения в PMS. Найди риски, зависимости и план проверки.',
+    system: 'Изучи SmartBooking по документам: модули, роли, данные, интеграции, риски, где AI должен требовать уточнения.',
+    roadmap: 'Составь roadmap для улучшения PM-процесса SmartBooking: intake, ревью ТЗ, impact map, evidence, decision log и regression checklist.',
   }
 
   const runAi = async () => {
@@ -1726,6 +1727,7 @@ function AiPage() {
               <span className="mb-1 block text-[10px] uppercase text-[var(--text-tertiary)]">Режим</span>
               <select className="input" value={mode} onChange={(event) => setMode(event.target.value as AiMode)}>
                 <option value="spec">Создать ТЗ</option>
+                <option value="review">Ревью ТЗ</option>
                 <option value="bug">Изучить баг</option>
                 <option value="system">Изучить систему</option>
                 <option value="roadmap">Roadmap</option>
@@ -1744,11 +1746,11 @@ function AiPage() {
 
             <label className="flex items-center gap-3 rounded-lg border border-[var(--border-primary)] bg-cockpit-card p-3 text-[var(--text-secondary)]">
               <input type="checkbox" checked={includeRepo} onChange={(event) => setIncludeRepo(event.target.checked)} />
-              <span>Изучить GitHub repo `tripowz/PM_planner`</span>
+              <span>Изучить GitHub repo и SmartBooking docs</span>
             </label>
 
             <div className="rounded-lg border border-[var(--border-primary)] bg-cockpit-card p-3 text-[12px] text-[var(--text-tertiary)]">
-              Модель: `llama-3.3-70b-versatile`. Ключ Groq хранится только на сервере Vercel как `GROQ_API_KEY`.
+              Модель: `llama-3.3-70b-versatile`. Обязательный контекст: `AI_TZ_REVIEW_INSTRUCTIONS` и `PM_SYSTEM_INPUT_SMARTBOOKING`. Ключ Groq хранится только на сервере Vercel.
             </div>
 
             <button className="btn btn-primary" disabled={loading} onClick={runAi}>
