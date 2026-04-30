@@ -162,6 +162,7 @@ type Template = {
 }
 
 type AiMode = 'spec' | 'review' | 'bug' | 'system' | 'roadmap'
+type AiProvider = 'gemini' | 'groq'
 
 type PomodoroState = {
   running: boolean
@@ -1643,6 +1644,7 @@ function AnalyticsPage() {
 
 function AiPage() {
   const { tasks, flags, decisions, notes, retros } = useAppStore()
+  const [provider, setProvider] = useState<AiProvider>('gemini')
   const [mode, setMode] = useState<AiMode>('spec')
   const [prompt, setPrompt] = useState('')
   const [includeRepo, setIncludeRepo] = useState(true)
@@ -1673,7 +1675,7 @@ function AiPage() {
       const token = session.data.session?.access_token
       if (!token) throw new Error('Войдите в аккаунт перед запуском AI.')
 
-      const response = await fetch('/api/groq-spec', {
+      const response = await fetch(provider === 'gemini' ? '/api/gemini-spec' : '/api/groq-spec', {
         method: 'POST',
         headers: {
           authorization: `Bearer ${token}`,
@@ -1709,7 +1711,7 @@ function AiPage() {
     }
   }
 
-  const estimatedCost = usage ? ((usage.prompt_tokens ?? 0) / 1_000_000 * 0.59) + ((usage.completion_tokens ?? 0) / 1_000_000 * 0.79) : 0
+  const estimatedCost = provider === 'gemini' ? 0 : usage ? ((usage.prompt_tokens ?? 0) / 1_000_000 * 0.59) + ((usage.completion_tokens ?? 0) / 1_000_000 * 0.79) : 0
 
   return (
     <PageShell wide>
@@ -1719,10 +1721,18 @@ function AiPage() {
             <div className="grid h-11 w-11 place-items-center rounded-lg border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
               <Sparkles size={18} />
             </div>
-            <SectionHeader title="Groq AI" subtitle="ТЗ, баг-анализ и изучение системы по репозиторию" />
+            <SectionHeader title="AI / ТЗ" subtitle="ТЗ, баг-анализ и изучение системы по SmartBooking docs" />
           </div>
 
           <div className="mt-5 grid gap-4">
+            <label>
+              <span className="mb-1 block text-[10px] uppercase text-[var(--text-tertiary)]">Провайдер</span>
+              <select className="input" value={provider} onChange={(event) => setProvider(event.target.value as AiProvider)}>
+                <option value="gemini">Gemini 2.5 Flash Free</option>
+                <option value="groq">Groq Llama 3.3 70B</option>
+              </select>
+            </label>
+
             <label>
               <span className="mb-1 block text-[10px] uppercase text-[var(--text-tertiary)]">Режим</span>
               <select className="input" value={mode} onChange={(event) => setMode(event.target.value as AiMode)}>
@@ -1750,7 +1760,7 @@ function AiPage() {
             </label>
 
             <div className="rounded-lg border border-[var(--border-primary)] bg-cockpit-card p-3 text-[12px] text-[var(--text-tertiary)]">
-              Модель: `llama-3.3-70b-versatile`. Обязательный контекст: `AI_TZ_REVIEW_INSTRUCTIONS` и `PM_SYSTEM_INPUT_SMARTBOOKING`. Ключ Groq хранится только на сервере Vercel.
+              Модель: {provider === 'gemini' ? '`gemini-2.5-flash` free tier' : '`llama-3.3-70b-versatile`'}. Обязательный контекст: `AI_TZ_REVIEW_INSTRUCTIONS` и `PM_SYSTEM_INPUT_SMARTBOOKING`. API key хранится только на сервере Vercel.
             </div>
 
             <button className="btn btn-primary" disabled={loading} onClick={runAi}>
@@ -1766,7 +1776,7 @@ function AiPage() {
               <div className="flex flex-wrap gap-2">
                 <span className="badge">Input: {usage.prompt_tokens ?? 0}</span>
                 <span className="badge">Output: {usage.completion_tokens ?? 0}</span>
-                <span className="badge">~${estimatedCost.toFixed(4)}</span>
+                <span className="badge">{provider === 'gemini' ? 'Free tier' : `~$${estimatedCost.toFixed(4)}`}</span>
               </div>
             )}
           </div>
