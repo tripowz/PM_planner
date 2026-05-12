@@ -1787,8 +1787,8 @@ function AiPage({ setPage }: { setPage: (page: Page) => void }) {
   const [appliedSummary, setAppliedSummary] = useState<{ tasks: number; flags: number; decisions: number; notes: number } | null>(null)
 
   const examples: Record<AiMode, string> = {
-    spec: 'Создай ТЗ SmartBooking для фичи: массовое изменение цен и доступности по room type с учетом каналов, налогов, скидок и отчетов.',
-    review: 'Проверь это ТЗ SmartBooking на готовность к разработке: вставьте сюда черновик ТЗ или описание фичи.',
+    spec: 'Создай бизнес-ТЗ SmartBooking: как должно работать массовое изменение цен и доступности по room type. Опиши бизнес-логику, роли, сценарии, правила цен/налогов/скидок/каналов, ошибки, отчеты и критерии приемки простым языком.',
+    review: 'Проверь это бизнес-ТЗ SmartBooking: понятно ли описано как должно работать, какие правила не хватает, где риски для денег, бронирований, каналов, оплат и отчетов.',
     bug: 'Изучи возможный баг SmartBooking: OTA прислал изменение брони после ручного изменения в PMS. Найди риски, зависимости и план проверки.',
     system: 'Изучи SmartBooking по документам: модули, роли, данные, интеграции, риски, где AI должен требовать уточнения.',
     roadmap: 'Составь roadmap для улучшения PM-процесса SmartBooking: intake, ревью ТЗ, impact map, evidence, decision log и regression checklist.',
@@ -1883,7 +1883,7 @@ function AiPage({ setPage }: { setPage: (page: Page) => void }) {
             <div className="grid h-11 w-11 place-items-center rounded-lg border border-[var(--border-accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
               <Sparkles size={18} />
             </div>
-            <SectionHeader title="AI / ТЗ" subtitle="ТЗ, баг-анализ и изучение системы по SmartBooking docs" />
+            <SectionHeader title="AI / ТЗ" subtitle="Бизнес-ТЗ, логика работы, сценарии и правила SmartBooking" />
           </div>
 
           <div className="mt-5 grid gap-4">
@@ -1898,7 +1898,7 @@ function AiPage({ setPage }: { setPage: (page: Page) => void }) {
             <label>
               <span className="mb-1 block text-[10px] uppercase text-[var(--text-tertiary)]">Режим</span>
               <select className="input" value={mode} onChange={(event) => setMode(event.target.value as AiMode)}>
-                <option value="spec">Создать ТЗ</option>
+                <option value="spec">Создать бизнес-ТЗ</option>
                 <option value="review">Ревью ТЗ</option>
                 <option value="bug">Изучить баг</option>
                 <option value="system">Изучить систему</option>
@@ -1927,7 +1927,7 @@ function AiPage({ setPage }: { setPage: (page: Page) => void }) {
             </label>
 
             <div className="rounded-lg border border-[var(--border-primary)] bg-cockpit-card p-3 text-[12px] text-[var(--text-tertiary)]">
-              Модель: {provider === 'gemini' ? '`gemini-2.5-flash` free tier' : '`llama-3.3-70b-versatile`'}. AI возвращает документ и action plan, а система раскладывает его по страницам через Supabase.
+              Модель: {provider === 'gemini' ? '`gemini-2.5-flash` free tier' : '`llama-3.3-70b-versatile`'}. В режиме ТЗ AI пишет бизнес-логику простым языком, затем создает задачи и заметки через Supabase.
             </div>
 
             <button className="btn btn-primary" disabled={loading || applying} onClick={runAi}>
